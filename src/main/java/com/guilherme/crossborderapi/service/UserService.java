@@ -3,6 +3,7 @@ package com.guilherme.crossborderapi.service;
 import com.guilherme.crossborderapi.dto.user.UserCreateRequest;
 import com.guilherme.crossborderapi.dto.user.UserResponse;
 import com.guilherme.crossborderapi.dto.wallet.UserWalletsResponse;
+import com.guilherme.crossborderapi.dto.wallet.WalletDepositRequest;
 import com.guilherme.crossborderapi.dto.wallet.WalletResponse;
 import com.guilherme.crossborderapi.entity.User;
 import com.guilherme.crossborderapi.entity.Wallet;
@@ -80,6 +81,20 @@ public class UserService {
                 .map(WalletResponse::fromEntity)
                 .toList();
         return new UserWalletsResponse(id, balances);
+    }
+
+    @Transactional
+    public UserWalletsResponse deposit(Long id, WalletDepositRequest request) {
+        findUserOrThrow(id);
+
+        Wallet wallet = walletRepository.findByUserIdAndCurrency(id, request.currency())
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Carteira " + request.currency() + " não encontrada para o usuário id=" + id));
+
+        wallet.setBalance(wallet.getBalance().add(request.amount()));
+        walletRepository.save(wallet);
+
+        return getUserWallets(id);
     }
 
     private User findUserOrThrow(Long id) {

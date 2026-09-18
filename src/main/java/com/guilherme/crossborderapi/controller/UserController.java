@@ -3,6 +3,7 @@ package com.guilherme.crossborderapi.controller;
 import com.guilherme.crossborderapi.dto.user.UserCreateRequest;
 import com.guilherme.crossborderapi.dto.user.UserResponse;
 import com.guilherme.crossborderapi.dto.wallet.UserWalletsResponse;
+import com.guilherme.crossborderapi.dto.wallet.WalletDepositRequest;
 import com.guilherme.crossborderapi.exception.handler.ErrorResponse;
 import com.guilherme.crossborderapi.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -87,5 +88,25 @@ public class UserController {
     public ResponseEntity<UserWalletsResponse> getUserWallets(
             @Parameter(description = "Id do usuário", example = "1") @PathVariable Long id) {
         return ResponseEntity.ok(userService.getUserWallets(id));
+    }
+
+    @Operation(
+            summary = "Depositar saldo",
+            description = "Adiciona saldo à carteira do usuário na moeda informada (BRL ou USD). "
+                    + "Endpoint auxiliar para testes/demonstração — não faz parte do fluxo de remessa."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Depósito realizado, retorna os saldos atualizados",
+                    content = @Content(schema = @Schema(implementation = UserWalletsResponse.class))),
+            @ApiResponse(responseCode = "400", description = "Dados inválidos",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "404", description = "Usuário ou carteira não encontrados",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    @PostMapping("/{id}/wallets/deposit")
+    public ResponseEntity<UserWalletsResponse> deposit(
+            @Parameter(description = "Id do usuário", example = "1") @PathVariable Long id,
+            @Valid @RequestBody WalletDepositRequest request) {
+        return ResponseEntity.ok(userService.deposit(id, request));
     }
 }
