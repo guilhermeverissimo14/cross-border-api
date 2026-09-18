@@ -6,9 +6,11 @@ import com.guilherme.crossborderapi.entity.User;
 import com.guilherme.crossborderapi.entity.Wallet;
 import com.guilherme.crossborderapi.enums.Currency;
 import com.guilherme.crossborderapi.exception.DuplicateResourceException;
+import com.guilherme.crossborderapi.exception.ResourceNotFoundException;
 import com.guilherme.crossborderapi.repository.UserRepository;
 import com.guilherme.crossborderapi.repository.WalletRepository;
 import java.math.BigDecimal;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -54,5 +56,23 @@ public class UserService {
                 .balance(BigDecimal.ZERO)
                 .build();
         walletRepository.save(wallet);
+    }
+
+    @Transactional(readOnly = true)
+    public UserResponse getUserById(Long id) {
+        User user = findUserOrThrow(id);
+        return UserResponse.fromEntity(user);
+    }
+
+    @Transactional(readOnly = true)
+    public List<UserResponse> getAllUsers() {
+        return userRepository.findAll().stream()
+                .map(UserResponse::fromEntity)
+                .toList();
+    }
+
+    private User findUserOrThrow(Long id) {
+        return userRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Usuário não encontrado: id=" + id));
     }
 }
