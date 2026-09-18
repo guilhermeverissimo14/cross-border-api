@@ -56,7 +56,6 @@ CREATE TABLE remittances (
     exchange_rate  DECIMAL(19, 6) NOT NULL,
     direction      VARCHAR(20)    NOT NULL,
     status         VARCHAR(20)    NOT NULL,
-    details        TEXT,
     idempotency_key VARCHAR(64)   NOT NULL,
     created_at     TIMESTAMP      NOT NULL,
     CONSTRAINT fk_remittances_sender   FOREIGN KEY (sender_id)   REFERENCES users (id),

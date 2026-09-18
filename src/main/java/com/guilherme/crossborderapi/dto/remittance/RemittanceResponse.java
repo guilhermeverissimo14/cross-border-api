@@ -32,9 +32,6 @@ public record RemittanceResponse(
         @Schema(description = "Status final da remessa")
         RemittanceStatus status,
 
-        @Schema(description = "Motivo da falha, quando status = FAILED")
-        String details,
-
         @Schema(description = "Data/hora da remessa")
         LocalDateTime createdAt
 ) {
@@ -49,7 +46,6 @@ public record RemittanceResponse(
                 remittance.getExchangeRate(),
                 remittance.getDirection(),
                 remittance.getStatus(),
-                remittance.getDetails(),
                 remittance.getCreatedAt()
         );
     }

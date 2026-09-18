@@ -64,9 +64,6 @@ public class Remittance {
     @Column(name = "status", nullable = false, length = 20)
     private RemittanceStatus status;
 
-    @Column(name = "details", columnDefinition = "TEXT")
-    private String details;
-
     @Column(name = "idempotency_key", nullable = false, length = 64)
     private String idempotencyKey;
 
