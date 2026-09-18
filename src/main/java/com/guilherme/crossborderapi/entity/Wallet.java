@@ -13,6 +13,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import jakarta.persistence.Version;
 import java.math.BigDecimal;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -47,6 +48,10 @@ public class Wallet {
     @Column(name = "currency", nullable = false, length = 3)
     private Currency currency;
 
-    @Column(name = "balance", nullable = false, precision = 19, scale = 2)
+    @Column(name = "balance", nullable = false, precision = 19, scale = 4)
     private BigDecimal balance;
+
+    @Version
+    @Column(name = "version", nullable = false)
+    private Long version;
 }
