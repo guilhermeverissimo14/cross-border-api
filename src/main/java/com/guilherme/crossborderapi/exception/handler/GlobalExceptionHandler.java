@@ -11,6 +11,7 @@ import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -39,6 +40,14 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleUnprocessable(RuntimeException ex) {
         ErrorResponse body = ErrorResponse.of(HttpStatus.UNPROCESSABLE_CONTENT, ex.getMessage());
         return ResponseEntity.status(HttpStatus.UNPROCESSABLE_CONTENT).body(body);
+    }
+
+    // Duas transações concorrentes tentaram atualizar a mesma linha(Wallet) ao mesmo tempo.
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    public ResponseEntity<ErrorResponse> handleOptimisticLockingFailure(ObjectOptimisticLockingFailureException ex) {
+        ErrorResponse body = ErrorResponse.of(HttpStatus.CONFLICT,
+                "Esse recurso foi modificado por outra operação concorrente. Tente novamente.");
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
     }
 
     // Erro de desserialização do JSON (ex: valor de enum inválido) acontece antes do @Valid rodar,
