@@ -2,7 +2,9 @@ package com.guilherme.crossborderapi.exception.handler;
 
 import com.guilherme.crossborderapi.exception.DuplicateResourceException;
 import com.guilherme.crossborderapi.exception.ExchangeRateUnavailableException;
+import com.guilherme.crossborderapi.exception.InsufficientBalanceException;
 import com.guilherme.crossborderapi.exception.ResourceNotFoundException;
+import com.guilherme.crossborderapi.exception.SelfRemittanceException;
 import tools.jackson.databind.exc.InvalidFormatException;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -28,8 +30,13 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(body);
     }
 
-    @ExceptionHandler(ExchangeRateUnavailableException.class)
-    public ResponseEntity<ErrorResponse> handleExchangeRateUnavailable(ExchangeRateUnavailableException ex) {
+    // Regras de negócio que a requisição, mesmo bem formada, não consegue atender no estado atual.
+    @ExceptionHandler({
+            ExchangeRateUnavailableException.class,
+            InsufficientBalanceException.class,
+            SelfRemittanceException.class
+    })
+    public ResponseEntity<ErrorResponse> handleUnprocessable(RuntimeException ex) {
         ErrorResponse body = ErrorResponse.of(HttpStatus.UNPROCESSABLE_CONTENT, ex.getMessage());
         return ResponseEntity.status(HttpStatus.UNPROCESSABLE_CONTENT).body(body);
     }
