@@ -55,7 +55,7 @@ Além dos testes, gera o relatório de cobertura (JaCoCo) em `target/site/jacoco
 
 Nenhum teste chama o BCB de verdade. O que está coberto:
 
-- **Endpoints (integração ponta a ponta)**: os 11 endpoints via MockMvc, passando por controller, service e H2 real, com só o BCB simulado. Cobre sucesso e erros (`400`, `404`, `409`, `422`), limites PF/PJ, idempotência, rollback e fallback de cotação.
+- **Endpoints (integração ponta a ponta)**: os 12 endpoints via MockMvc, passando por controller, service e H2 real, com só o BCB simulado. Cobre sucesso e erros (`400`, `404`, `409`, `422`), limites PF/PJ, idempotência, rollback e fallback de cotação.
 - **Regras de negócio (Mockito)**: cadastro e depósito, remessa (validações, conversão, débito/crédito, ledger, limite diário, idempotência), cotação (cache, fallback, erros) e extrato.
 - **Strategy do limite diário**: resolução da política de PF e de PJ.
 - **Cliente do BCB**: resposta normal, dia sem cotação e erro 500, simulados com `MockRestServiceServer`. Um teste separado prova que a chamada **estoura o timeout** contra um servidor que nunca responde.
@@ -66,27 +66,34 @@ Nenhum teste chama o BCB de verdade. O que está coberto:
 
 ## Endpoints
 
-> **Ao testar pelo Swagger:** um usuário novo tem saldo zero, então faça `POST /users/{id}/wallets/deposit` antes de remeter. `POST /remittances` exige o header `Idempotency-Key` (o Swagger já mostra o campo): use uma chave **nova** a cada remessa. Repetir a mesma chamada devolve a remessa original; reusar a chave com outro valor dá `422`. A cotação do dia só sai por volta das 13h; antes disso, e em fins de semana e feriados, vale a última disponível.
+> **Ao testar pelo Swagger:** cadastre um usuário (`POST /users`), faça `POST /auth/login` e cole o `accessToken` no botão **Authorize**; sem isso, os endpoints protegidos respondem `401`. Um usuário novo tem saldo zero, então faça `POST /users/{id}/wallets/deposit` antes de remeter. `POST /remittances` exige o header `Idempotency-Key` (o Swagger já mostra o campo): use uma chave **nova** a cada remessa. Repetir a mesma chamada devolve a remessa original; reusar a chave com outro valor dá `422`. A cotação do dia só sai por volta das 13h; antes disso, e em fins de semana e feriados, vale a última disponível.
 
 | Método | Rota | Para quê |
 |---|---|---|
-| `POST` | `/users` | Cadastra usuário (PF ou PJ) e cria as carteiras BRL e USD |
+| `POST` | `/auth/login` | Troca e-mail e senha por um token JWT (público) |
+| `POST` | `/users` | Cadastra usuário (PF ou PJ) e cria as carteiras BRL e USD (público) |
 | `GET` | `/users`, `/users/{id}` | Lista / busca usuários |
 | `GET` | `/users/{id}/wallets` | Saldos em BRL e USD |
 | `POST` | `/users/{id}/wallets/deposit` | Deposita saldo (auxiliar de teste) |
-| `POST` | `/remittances` | **Cria a remessa** (exige `Idempotency-Key`) |
+| `POST` | `/remittances` | **Cria a remessa** (exige `Idempotency-Key`; o remetente é o usuário do token) |
 | `GET` | `/remittances/{id}` | Busca uma remessa |
 | `GET` | `/users/{id}/remittances` | Remessas enviadas pelo usuário; `?remittanceId=` filtra uma |
 | `GET` | `/users/{id}/ledger-entries` | Extrato do usuário; `?currency=BRL` filtra a moeda |
 | `GET` | `/remittances/{id}/ledger-entries` | Os 2 lançamentos (débito e crédito) de uma remessa |
-| `GET` | `/exchange-rates/{data}` | Cotação aplicada em uma data (`AAAA-MM-DD`) e a data real dela |
+| `GET` | `/exchange-rates/{data}` | Cotação aplicada em uma data (`AAAA-MM-DD`) e a data real dela (público) |
+
+Só são públicos o login, o cadastro, a cotação, o Swagger e o health. O resto exige o header `Authorization: Bearer <token>`. O token é um JWT (HS256) que expira em 1 h.
+
+**Quem pode ver o quê:** rotas `/users/{id}/...` (carteiras, depósito, extrato, remessas enviadas) só funcionam para o próprio usuário; o `{id}` diferente do token dá `403`. Em `POST /remittances` o remetente **é o usuário do token** (não existe `senderId` no body). Uma remessa e seu extrato só aparecem para quem enviou ou recebeu; para os demais, `404`. `GET /users` lista todos os usuários **de propósito**, para facilitar os testes; em produção seria restrito.
 
 Erros seguem sempre o mesmo formato (`timestamp`, `status`, `error`, `message`, `fieldErrors`):
 
 | Código | Quando |
 |---|---|
 | `400` | Campo inválido ou ausente, header ausente, id ou data em formato errado |
-| `404` | Usuário ou remessa inexistente |
+| `401` | Sem token, token inválido ou expirado, ou e-mail/senha incorretos no login |
+| `403` | `/users/{id}/...` de outro usuário |
+| `404` | Usuário ou remessa inexistente (ou remessa de que o usuário não participa) |
 | `409` | E-mail/documento já cadastrado, carteira alterada por outra operação, chave de idempotência em uso |
 | `422` | Regra de negócio: saldo insuficiente, limite diário, remessa para si mesmo, cotação indisponível, chave reutilizada com outros dados |
 
@@ -113,6 +120,7 @@ Erros seguem sempre o mesmo formato (`timestamp`, `status`, `error`, `message`, 
 
 ## Além do que foi solicitado
 
+- **Autenticação JWT** (Spring Security, sem sessão no servidor). O segredo de assinatura vem de `app.security.jwt.secret`; erros de autenticação (`401`) usam o mesmo formato de erro da API.
 - **Idempotência.** `POST /remittances` exige `Idempotency-Key`; há `UNIQUE (sender_id, idempotency_key)` no banco. Repetir a chamada devolve a remessa original; mesma chave com dados diferentes é recusada; duas requisições simultâneas com a mesma chave → uma leva `409`. Medido localmente: sem a chave, dois cliques com 50 ms de intervalo debitavam **duas vezes** (12 de 12 tentativas); com ela, uma.
 - **Lock otimista** (`@Version`) nas carteiras: duas remessas concorrentes na mesma carteira, uma leva `409` em vez de sobrescrever o saldo.
 - **Ledger imutável** (partida dobrada): cada remessa grava um `DEBIT` em BRL na carteira de quem envia e um `CREDIT` em USD na de quem recebe. Só leitura na API.
@@ -163,7 +171,8 @@ Em push na `main`, a imagem também é publicada no GitHub Container Registry (`
 
 - **USD → BRL não foi implementado.** O modelo já está preparado (coluna `direction`), mas faltam decisões de produto: qual cotação usar na volta (compra ou venda) e como contar o limite diário.
 - **Uma cotação por dia.** A PTAX de fechamento sai por volta das 13h; antes disso vale a do dia anterior, e a variação durante o dia não é refletida (em 17/09 o dólar variou cerca de 0,5% entre a abertura e as 11h). Os boletins intradiários do BCB seriam uma melhoria.
-- **Sem autenticação.** Senhas são guardadas com BCrypt, mas não existe login; qualquer chamador lê qualquer usuário.
+- **`GET /users` lista todos os usuários** (nome, e-mail e documento) para qualquer usuário logado, de propósito, para facilitar os testes. Em produção seria restrito, por exemplo a um perfil administrador.
+- **Segredo do JWT.** O valor do `application.properties` é só para desenvolvimento; em qualquer ambiente real, defina `APP_SECURITY_JWT_SECRET` (mínimo 32 caracteres). Os manifestos do Kubernetes ainda não trazem esse `Secret`.
 - **CPF/CNPJ**: a unicidade é garantida, mas os dígitos verificadores não são validados.
 - **Banco em memória**: os dados somem ao reiniciar e não é possível escalar horizontalmente (cada instância teria o seu banco). Em produção seria um banco externo (ex.: PostgreSQL).
 - **Depósito é auxiliar de teste** e não gera lançamento no ledger; por isso o extrato de quem depositou não fecha com o saldo.
