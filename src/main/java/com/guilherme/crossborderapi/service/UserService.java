@@ -2,6 +2,7 @@ package com.guilherme.crossborderapi.service;
 
 import com.guilherme.crossborderapi.dto.user.UserCreateRequest;
 import com.guilherme.crossborderapi.dto.user.UserResponse;
+import com.guilherme.crossborderapi.dto.wallet.UserWalletsResponse;
 import com.guilherme.crossborderapi.dto.wallet.WalletResponse;
 import com.guilherme.crossborderapi.entity.User;
 import com.guilherme.crossborderapi.entity.Wallet;
@@ -73,11 +74,12 @@ public class UserService {
     }
 
     @Transactional(readOnly = true)
-    public List<WalletResponse> getUserWallets(Long id) {
+    public UserWalletsResponse getUserWallets(Long id) {
         findUserOrThrow(id);
-        return walletRepository.findByUserId(id).stream()
+        List<WalletResponse> balances = walletRepository.findByUserId(id).stream()
                 .map(WalletResponse::fromEntity)
                 .toList();
+        return new UserWalletsResponse(id, balances);
     }
 
     private User findUserOrThrow(Long id) {

@@ -2,7 +2,7 @@ package com.guilherme.crossborderapi.controller;
 
 import com.guilherme.crossborderapi.dto.user.UserCreateRequest;
 import com.guilherme.crossborderapi.dto.user.UserResponse;
-import com.guilherme.crossborderapi.dto.wallet.WalletResponse;
+import com.guilherme.crossborderapi.dto.wallet.UserWalletsResponse;
 import com.guilherme.crossborderapi.exception.handler.ErrorResponse;
 import com.guilherme.crossborderapi.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -79,12 +79,12 @@ public class UserController {
     )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Carteiras do usuário",
-                    content = @Content(schema = @Schema(implementation = WalletResponse.class))),
+                    content = @Content(schema = @Schema(implementation = UserWalletsResponse.class))),
             @ApiResponse(responseCode = "404", description = "Usuário não encontrado",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     })
     @GetMapping("/{id}/wallets")
-    public ResponseEntity<List<WalletResponse>> getUserWallets(
+    public ResponseEntity<UserWalletsResponse> getUserWallets(
             @Parameter(description = "Id do usuário", example = "1") @PathVariable Long id) {
         return ResponseEntity.ok(userService.getUserWallets(id));
     }
