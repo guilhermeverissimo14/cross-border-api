@@ -9,10 +9,10 @@
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
 	<groupId>com.guilherme</groupId>
-	<artifactId>remessa-api</artifactId>
+	<artifactId>crossborder-api</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<name/>
-	<description/>
+	<name>crossborder-api</name>
+	<description>Cross Border remittance service - Inter Java challenge</description>
 	<url/>
 	<licenses>
 		<license/>

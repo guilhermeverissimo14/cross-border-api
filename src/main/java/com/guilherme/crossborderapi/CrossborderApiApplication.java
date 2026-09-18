@@ -1,13 +1,13 @@
-package com.guilherme.remessa_api;
+package com.guilherme.crossborderapi;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
-public class RemessaApiApplication {
+public class CrossborderApiApplication {
 
 	public static void main(String[] args) {
-		SpringApplication.run(RemessaApiApplication.class, args);
+		SpringApplication.run(CrossborderApiApplication.class, args);
 	}
 
 }
