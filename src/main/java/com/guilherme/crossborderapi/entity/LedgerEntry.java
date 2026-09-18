@@ -35,6 +35,8 @@ import org.hibernate.annotations.CreationTimestamp;
 @EqualsAndHashCode(exclude = "wallet")
 public class LedgerEntry {
 
+    public static final String REFERENCE_TYPE_REMITTANCE = "REMITTANCE";
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;

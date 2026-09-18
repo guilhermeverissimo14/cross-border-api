@@ -13,6 +13,7 @@ import com.guilherme.crossborderapi.enums.Currency;
 import com.guilherme.crossborderapi.enums.LedgerEntryType;
 import com.guilherme.crossborderapi.exception.ResourceNotFoundException;
 import com.guilherme.crossborderapi.repository.LedgerEntryRepository;
+import com.guilherme.crossborderapi.repository.RemittanceRepository;
 import com.guilherme.crossborderapi.repository.UserRepository;
 import java.math.BigDecimal;
 import java.util.List;
@@ -30,6 +31,9 @@ class LedgerServiceTest {
 
     @Mock
     private LedgerEntryRepository ledgerEntryRepository;
+
+    @Mock
+    private RemittanceRepository remittanceRepository;
 
     @InjectMocks
     private LedgerService ledgerService;
@@ -69,6 +73,30 @@ class LedgerServiceTest {
         when(userRepository.existsById(999L)).thenReturn(false);
 
         assertThatThrownBy(() -> ledgerService.getUserLedgerEntries(999L, null))
+                .isInstanceOf(ResourceNotFoundException.class);
+        verifyNoInteractions(ledgerEntryRepository);
+    }
+
+    @Test
+    void listsTheTwoLegsOfARemittance() {
+        when(remittanceRepository.existsById(7L)).thenReturn(true);
+        when(ledgerEntryRepository.findByReferenceTypeAndReferenceIdOrderByIdAsc(LedgerEntry.REFERENCE_TYPE_REMITTANCE, 7L))
+                .thenReturn(List.of(entry(1L, Currency.BRL, LedgerEntryType.DEBIT, "100.0000"),
+                        entry(2L, Currency.USD, LedgerEntryType.CREDIT, "19.39")));
+
+        List<LedgerEntryResponse> result = ledgerService.getRemittanceLedgerEntries(7L);
+
+        assertThat(result).extracting(LedgerEntryResponse::type)
+                .containsExactly(LedgerEntryType.DEBIT, LedgerEntryType.CREDIT);
+        assertThat(result).extracting(LedgerEntryResponse::currency)
+                .containsExactly(Currency.BRL, Currency.USD);
+    }
+
+    @Test
+    void throwsWhenRemittanceDoesNotExist() {
+        when(remittanceRepository.existsById(999L)).thenReturn(false);
+
+        assertThatThrownBy(() -> ledgerService.getRemittanceLedgerEntries(999L))
                 .isInstanceOf(ResourceNotFoundException.class);
         verifyNoInteractions(ledgerEntryRepository);
     }

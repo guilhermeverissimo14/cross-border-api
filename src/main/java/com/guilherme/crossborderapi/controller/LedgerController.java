@@ -50,4 +50,24 @@ public class LedgerController {
             @RequestParam(required = false) Currency currency) {
         return ResponseEntity.ok(ledgerService.getUserLedgerEntries(id, currency));
     }
+
+    @Operation(
+            summary = "Lançamentos de uma remessa",
+            description = "Os dois lançamentos gerados pela remessa, na ordem em que foram gravados: o DEBIT em "
+                    + "BRL da carteira de quem enviou e o CREDIT em USD da carteira de quem recebeu. "
+                    + "Reenviar a remessa com a mesma Idempotency-Key não cria lançamentos novos."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Lançamentos da remessa",
+                    content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE)),
+            @ApiResponse(responseCode = "400", description = "Id não numérico",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "404", description = "Remessa não encontrada",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    @GetMapping("/remittances/{id}/ledger-entries")
+    public ResponseEntity<List<LedgerEntryResponse>> getRemittanceLedgerEntries(
+            @Parameter(description = "Id da remessa", example = "1") @PathVariable Long id) {
+        return ResponseEntity.ok(ledgerService.getRemittanceLedgerEntries(id));
+    }
 }

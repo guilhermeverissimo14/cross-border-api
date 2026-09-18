@@ -10,4 +10,6 @@ public interface LedgerEntryRepository extends JpaRepository<LedgerEntry, Long> 
     List<LedgerEntry> findByWalletUserIdOrderByCreatedAtDescIdDesc(Long userId);
 
     List<LedgerEntry> findByWalletUserIdAndCurrencyOrderByCreatedAtDescIdDesc(Long userId, Currency currency);
+
+    List<LedgerEntry> findByReferenceTypeAndReferenceIdOrderByIdAsc(String referenceType, Long referenceId);
 }

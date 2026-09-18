@@ -42,7 +42,6 @@ public class RemittanceService {
     private static final Currency SOURCE_CURRENCY = Currency.BRL;
     private static final Currency TARGET_CURRENCY = Currency.USD;
     private static final int MONEY_SCALE = 2;
-    private static final String REMITTANCE_REFERENCE_TYPE = "REMITTANCE";
 
     private static final Pattern IDEMPOTENCY_KEY_FORMAT = Pattern.compile("^[A-Za-z0-9._-]{1,64}$");
 
@@ -187,7 +186,7 @@ public class RemittanceService {
                 .currency(SOURCE_CURRENCY)
                 .type(LedgerEntryType.DEBIT)
                 .amount(amountBrl)
-                .referenceType(REMITTANCE_REFERENCE_TYPE)
+                .referenceType(LedgerEntry.REFERENCE_TYPE_REMITTANCE)
                 .referenceId(remittanceId)
                 .build());
 
@@ -196,7 +195,7 @@ public class RemittanceService {
                 .currency(TARGET_CURRENCY)
                 .type(LedgerEntryType.CREDIT)
                 .amount(amountUsd)
-                .referenceType(REMITTANCE_REFERENCE_TYPE)
+                .referenceType(LedgerEntry.REFERENCE_TYPE_REMITTANCE)
                 .referenceId(remittanceId)
                 .build());
     }
