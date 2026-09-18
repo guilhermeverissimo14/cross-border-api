@@ -1,5 +1,6 @@
 package com.guilherme.crossborderapi.exception.handler;
 
+import com.guilherme.crossborderapi.exception.DailyLimitExceededException;
 import com.guilherme.crossborderapi.exception.DuplicateResourceException;
 import com.guilherme.crossborderapi.exception.ExchangeRateUnavailableException;
 import com.guilherme.crossborderapi.exception.InsufficientBalanceException;
@@ -35,7 +36,8 @@ public class GlobalExceptionHandler {
     @ExceptionHandler({
             ExchangeRateUnavailableException.class,
             InsufficientBalanceException.class,
-            SelfRemittanceException.class
+            SelfRemittanceException.class,
+            DailyLimitExceededException.class
     })
     public ResponseEntity<ErrorResponse> handleUnprocessable(RuntimeException ex) {
         ErrorResponse body = ErrorResponse.of(HttpStatus.UNPROCESSABLE_CONTENT, ex.getMessage());
