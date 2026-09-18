@@ -52,57 +52,9 @@ Nenhum teste chama o BCB de verdade. O que está coberto:
 
 ---
 
-## Testando a API em 5 passos
-
-Com a aplicação recém-iniciada (os usuários criados abaixo recebem os ids 1 e 2):
-
-```bash
-API=http://localhost:8080
-H='Content-Type: application/json'
-c() { curl -s -w '\n' "$@"; }   # curl silencioso que quebra a linha no fim de cada resposta
-
-# 1) Cria a remetente (PF) e o destinatário (PJ). Cada um já nasce com carteira em BRL e em USD, zeradas.
-c -X POST $API/users -H "$H" -d '{"fullName":"Ana Souza","email":"ana@email.com","password":"senha123","userType":"PF","document":"52998224725"}'
-c -X POST $API/users -H "$H" -d '{"fullName":"Loja Ltda","email":"loja@email.com","password":"senha123","userType":"PJ","document":"11222333000181"}'
-
-# 2) Deposita R$ 1.000 na carteira da Ana (endpoint auxiliar: o enunciado não define como entra saldo)
-c -X POST $API/users/1/wallets/deposit -H "$H" -d '{"currency":"BRL","amount":1000.00}'
-
-# 3) Remessa de R$ 500 da Ana (1) para a Loja (2). O header Idempotency-Key é obrigatório.
-#    (sem uuidgen, use qualquer texto único, ex.: KEY=remessa-001)
-KEY=$(uuidgen)
-c -X POST $API/remittances -H "$H" -H "Idempotency-Key: $KEY" -d '{"senderId":1,"receiverId":2,"amountBrl":500.00}'
-
-# 4) Repete exatamente a mesma chamada (como um retry): devolve a MESMA remessa, sem debitar de novo
-c -X POST $API/remittances -H "$H" -H "Idempotency-Key: $KEY" -d '{"senderId":1,"receiverId":2,"amountBrl":500.00}'
-
-# 5) Confere os saldos e o extrato
-c $API/users/1/wallets
-c $API/users/2/wallets
-c $API/users/1/ledger-entries
-```
-
-Resposta do passo 3 (a cotação varia conforme o dia):
-
-```json
-{
-  "id": 1, "senderId": 1, "receiverId": 2,
-  "amountBrl": 500.00, "amountUsd": 96.96, "exchangeRate": 5.15690,
-  "direction": "BRL_TO_USD", "status": "COMPLETED",
-  "createdAt": "2026-09-18T15:01:40.588408"
-}
-```
-
-No passo 5, a Ana fica com R$ 500,00, a Loja com US$ 96,96, e o extrato da Ana mostra um `DEBIT` de R$ 500 ligado à remessa 1.
-
-**Se algo responder diferente do esperado:**
-- `400 Header obrigatório ausente` → faltou o `Idempotency-Key`.
-- `422 Idempotency-Key já foi usada em uma remessa com dados diferentes` → cada remessa nova precisa de uma chave nova; só reaproveite a chave ao repetir a *mesma* chamada.
-- A cotação do dia só é publicada pelo BCB por volta das **13h**. Antes disso (e em fins de semana e feriados) a API usa a última cotação disponível. É o comportamento esperado.
-
----
-
 ## Endpoints
+
+> **Ao testar pelo Swagger:** um usuário novo tem saldo zero, então faça `POST /users/{id}/wallets/deposit` antes de remeter. `POST /remittances` exige o header `Idempotency-Key` (o Swagger já mostra o campo): use uma chave **nova** a cada remessa. Repetir a mesma chamada devolve a remessa original; reusar a chave com outro valor dá `422`. A cotação do dia só sai por volta das 13h; antes disso, e em fins de semana e feriados, vale a última disponível.
 
 | Método | Rota | Para quê |
 |---|---|---|
