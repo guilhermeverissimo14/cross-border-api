@@ -35,6 +35,7 @@ import com.guilherme.crossborderapi.service.dailylimit.DailyLimitPolicyProvider;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -291,6 +292,49 @@ class RemittanceServiceTest {
 
         assertThatThrownBy(() -> remittanceService.getRemittanceById(999L))
                 .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    // --- Listagem por remetente ---
+
+    @Test
+    void listsRemittancesSentByUser() {
+        when(userRepository.existsById(1L)).thenReturn(true);
+        Remittance newer = previousRemittance();
+        newer.setId(101L);
+        when(remittanceRepository.findBySenderIdOrderByCreatedAtDescIdDesc(1L))
+                .thenReturn(List.of(newer, previousRemittance()));
+
+        List<RemittanceResponse> result = remittanceService.getRemittancesSentByUser(1L, null);
+
+        assertThat(result).extracting(RemittanceResponse::id).containsExactly(101L, 100L);
+    }
+
+    @Test
+    void filtersBySpecificRemittanceSentByUser() {
+        when(userRepository.existsById(1L)).thenReturn(true);
+        when(remittanceRepository.findByIdAndSenderId(100L, 1L)).thenReturn(Optional.of(previousRemittance()));
+
+        List<RemittanceResponse> result = remittanceService.getRemittancesSentByUser(1L, 100L);
+
+        assertThat(result).extracting(RemittanceResponse::id).containsExactly(100L);
+        verify(remittanceRepository, never()).findBySenderIdOrderByCreatedAtDescIdDesc(any());
+    }
+
+    @Test
+    void returnsEmptyListWhenFilteredRemittanceWasNotSentByThatUser() {
+        when(userRepository.existsById(1L)).thenReturn(true);
+        when(remittanceRepository.findByIdAndSenderId(555L, 1L)).thenReturn(Optional.empty());
+
+        assertThat(remittanceService.getRemittancesSentByUser(1L, 555L)).isEmpty();
+    }
+
+    @Test
+    void throwsWhenListingRemittancesOfNonexistentUser() {
+        when(userRepository.existsById(999L)).thenReturn(false);
+
+        assertThatThrownBy(() -> remittanceService.getRemittancesSentByUser(999L, null))
+                .isInstanceOf(ResourceNotFoundException.class);
+        verifyNoInteractions(remittanceRepository);
     }
 
     private void stubValidRemittanceScenario(Wallet senderWallet, Wallet receiverWallet) {

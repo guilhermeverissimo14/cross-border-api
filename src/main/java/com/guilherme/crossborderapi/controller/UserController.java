@@ -1,10 +1,12 @@
 package com.guilherme.crossborderapi.controller;
 
+import com.guilherme.crossborderapi.dto.remittance.RemittanceResponse;
 import com.guilherme.crossborderapi.dto.user.UserCreateRequest;
 import com.guilherme.crossborderapi.dto.user.UserResponse;
 import com.guilherme.crossborderapi.dto.wallet.UserWalletsResponse;
 import com.guilherme.crossborderapi.dto.wallet.WalletDepositRequest;
 import com.guilherme.crossborderapi.exception.handler.ErrorResponse;
+import com.guilherme.crossborderapi.service.RemittanceService;
 import com.guilherme.crossborderapi.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -24,6 +26,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -33,6 +36,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class UserController {
 
     private final UserService userService;
+    private final RemittanceService remittanceService;
 
     @Operation(
             summary = "Cadastrar usuário",
@@ -108,5 +112,27 @@ public class UserController {
             @Parameter(description = "Id do usuário", example = "1") @PathVariable Long id,
             @Valid @RequestBody WalletDepositRequest request) {
         return ResponseEntity.ok(userService.deposit(id, request));
+    }
+
+    @Operation(
+            summary = "Listar remessas enviadas pelo usuário",
+            description = "Retorna as remessas enviadas pelo usuário, da mais recente para a mais antiga. "
+                    + "Com `remittanceId`, retorna apenas essa remessa: lista com 1 item, ou vazia se ela não "
+                    + "existir ou tiver sido enviada por outro usuário."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Lista de remessas (pode ser vazia)",
+                    content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE)),
+            @ApiResponse(responseCode = "400", description = "remittanceId ou id do usuário não numérico",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "404", description = "Usuário não encontrado",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    @GetMapping("/{id}/remittances")
+    public ResponseEntity<List<RemittanceResponse>> getUserRemittances(
+            @Parameter(description = "Id do usuário remetente", example = "1") @PathVariable Long id,
+            @Parameter(description = "Filtro opcional: id de uma remessa específica", example = "5")
+            @RequestParam(required = false) Long remittanceId) {
+        return ResponseEntity.ok(remittanceService.getRemittancesSentByUser(id, remittanceId));
     }
 }

@@ -25,6 +25,7 @@ import com.guilherme.crossborderapi.service.dailylimit.DailyLimitPolicyProvider;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
@@ -119,6 +120,20 @@ public class RemittanceService {
         return remittanceRepository.findById(id)
                 .map(RemittanceResponse::fromEntity)
                 .orElseThrow(() -> new ResourceNotFoundException("Remessa não encontrada: id=" + id));
+    }
+
+  
+    @Transactional(readOnly = true)
+    public List<RemittanceResponse> getRemittancesSentByUser(Long userId, Long remittanceId) {
+        if (!userRepository.existsById(userId)) {
+            throw new ResourceNotFoundException("Usuário não encontrado: id=" + userId);
+        }
+
+        List<Remittance> remittances = remittanceId == null
+                ? remittanceRepository.findBySenderIdOrderByCreatedAtDescIdDesc(userId)
+                : remittanceRepository.findByIdAndSenderId(remittanceId, userId).stream().toList();
+
+        return remittances.stream().map(RemittanceResponse::fromEntity).toList();
     }
 
     private void validateIdempotencyKeyFormat(String idempotencyKey) {
