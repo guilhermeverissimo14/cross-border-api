@@ -114,6 +114,13 @@ public class RemittanceService {
         return RemittanceResponse.fromEntity(savedRemittance);
     }
 
+    @Transactional(readOnly = true)
+    public RemittanceResponse getRemittanceById(Long id) {
+        return remittanceRepository.findById(id)
+                .map(RemittanceResponse::fromEntity)
+                .orElseThrow(() -> new ResourceNotFoundException("Remessa não encontrada: id=" + id));
+    }
+
     private void validateIdempotencyKeyFormat(String idempotencyKey) {
         if (idempotencyKey == null || !IDEMPOTENCY_KEY_FORMAT.matcher(idempotencyKey).matches()) {
             throw new InvalidIdempotencyKeyException(

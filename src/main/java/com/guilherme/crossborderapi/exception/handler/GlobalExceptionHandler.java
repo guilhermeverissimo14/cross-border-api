@@ -21,6 +21,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 @Slf4j
 @RestControllerAdvice
@@ -115,6 +116,15 @@ public class GlobalExceptionHandler {
         }
         log.warn("Erro de validação nos campos: {}", fieldErrors.keySet());
         ErrorResponse body = ErrorResponse.of(HttpStatus.BAD_REQUEST, "Erro de validação", fieldErrors);
+        return ResponseEntity.badRequest().body(body);
+    }
+
+    // Ex: GET /remittances/abc o {id} da URL não é um número. O valor enviado fica fora do log e da resposta.
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ErrorResponse> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+        log.warn("Parâmetro '{}' com tipo inválido", ex.getName());
+        ErrorResponse body = ErrorResponse.of(HttpStatus.BAD_REQUEST,
+                "Valor inválido para o parâmetro '" + ex.getName() + "'");
         return ResponseEntity.badRequest().body(body);
     }
 

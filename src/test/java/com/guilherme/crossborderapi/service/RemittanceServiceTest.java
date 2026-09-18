@@ -270,6 +270,29 @@ class RemittanceServiceTest {
         verify(ledgerEntryRepository, never()).save(any());
     }
 
+    // --- Consulta por id ---
+
+    @Test
+    void returnsRemittanceById() {
+        when(remittanceRepository.findById(100L)).thenReturn(Optional.of(previousRemittance()));
+
+        RemittanceResponse response = remittanceService.getRemittanceById(100L);
+
+        assertThat(response.id()).isEqualTo(100L);
+        assertThat(response.senderId()).isEqualTo(1L);
+        assertThat(response.receiverId()).isEqualTo(2L);
+        assertThat(response.amountBrl()).isEqualByComparingTo("1000.00");
+        assertThat(response.amountUsd()).isEqualByComparingTo("200.00");
+    }
+
+    @Test
+    void throwsWhenRemittanceDoesNotExist() {
+        when(remittanceRepository.findById(999L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> remittanceService.getRemittanceById(999L))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
     private void stubValidRemittanceScenario(Wallet senderWallet, Wallet receiverWallet) {
         User sender = User.builder().id(1L).userType(UserType.PF).build();
         User receiver = User.builder().id(2L).build();
