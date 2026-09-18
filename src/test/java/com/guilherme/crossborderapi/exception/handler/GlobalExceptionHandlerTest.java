@@ -2,7 +2,10 @@ package com.guilherme.crossborderapi.exception.handler;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.guilherme.crossborderapi.entity.Wallet;
+import com.guilherme.crossborderapi.exception.IdempotencyKeyInUseException;
 import org.junit.jupiter.api.Test;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.HttpMediaTypeNotAcceptableException;
@@ -61,5 +64,33 @@ class GlobalExceptionHandlerTest {
                 handler.handleFrameworkClientError(new HttpMediaTypeNotAcceptableException("nada aceitável"));
 
         assertThat(response.getStatusCode().value()).isEqualTo(406);
+    }
+
+    @Test
+    void mapsConcurrentIdempotencyKeyTo409() {
+        ResponseEntity<ErrorResponse> response =
+                handler.handleIdempotencyKeyInUse(new IdempotencyKeyInUseException("em processamento"));
+
+        assertThat(response.getStatusCode().value()).isEqualTo(409);
+        assertThat(response.getBody().message()).isEqualTo("em processamento");
+    }
+
+    @Test
+    void mapsOptimisticLockFailureTo409() {
+        var ex = new ObjectOptimisticLockingFailureException(Wallet.class, 1L);
+
+        ResponseEntity<ErrorResponse> response = handler.handleOptimisticLockingFailure(ex);
+
+        assertThat(response.getStatusCode().value()).isEqualTo(409);
+        assertThat(response.getBody().message()).contains("Tente novamente");
+    }
+
+    @Test
+    void mapsUnexpectedErrorTo500WithoutLeakingDetails() {
+        ResponseEntity<ErrorResponse> response =
+                handler.handleGeneric(new IllegalStateException("senha do banco: 123"));
+
+        assertThat(response.getStatusCode().value()).isEqualTo(500);
+        assertThat(response.getBody().message()).isEqualTo("Erro interno no servidor");
     }
 }

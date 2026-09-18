@@ -1,0 +1,277 @@
+package com.guilherme.crossborderapi.integration;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsString;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import com.guilherme.crossborderapi.repository.ExchangeRateRepository;
+import java.util.Optional;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.MediaType;
+
+class RemittanceEndpointsTest extends ApiIntegrationTest {
+
+    @Autowired
+    private ExchangeRateRepository exchangeRateRepository;
+
+    @Test
+    void createRemittanceMovesMoneyAndConvertsWithTheDayQuote() throws Exception {
+        long sender = createUser("PF");
+        long receiver = createUser("PJ");
+        deposit(sender, "BRL", "1000");
+
+        postRemittance("ok-1", sender, receiver, "1000")
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").isNumber())
+                .andExpect(jsonPath("$.senderId").value(sender))
+                .andExpect(jsonPath("$.receiverId").value(receiver))
+                .andExpect(jsonPath("$.amountBrl").value(1000.0))
+                .andExpect(jsonPath("$.amountUsd").value(200.0))
+                .andExpect(jsonPath("$.exchangeRate").value(5.0))
+                .andExpect(jsonPath("$.direction").value("BRL_TO_USD"))
+                .andExpect(jsonPath("$.status").value("COMPLETED"))
+                .andExpect(jsonPath("$.createdAt").exists());
+
+        assertThat(walletBalance(sender, "BRL")).isEqualByComparingTo("0");
+        assertThat(walletBalance(receiver, "USD")).isEqualByComparingTo("200");
+        assertThat(walletBalance(sender, "USD")).isEqualByComparingTo("0");
+        assertThat(walletBalance(receiver, "BRL")).isEqualByComparingTo("0");
+    }
+
+    @Test
+    void amountUsdIsRoundedToTwoDecimals() throws Exception {
+        long sender = createUser("PF");
+        long receiver = createUser("PF");
+        deposit(sender, "BRL", "100");
+
+        postRemittance("round-1", sender, receiver, "10.01")
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.amountBrl").value(10.01))
+                .andExpect(jsonPath("$.amountUsd").value(2.0));
+    }
+
+    @Test
+    void getRemittanceByIdReturnsItOr404() throws Exception {
+        long sender = createUser("PF");
+        long receiver = createUser("PF");
+        deposit(sender, "BRL", "100");
+        long id = createRemittance(sender, receiver, "50");
+
+        getJson("/remittances/" + id)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(id))
+                .andExpect(jsonPath("$.amountBrl").value(50.0));
+
+        getJson("/remittances/999999999")
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.message").value("Remessa não encontrada: id=999999999"));
+
+        getJson("/remittances/abc").andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void missingIdempotencyKeyReturns400() throws Exception {
+        mockMvc.perform(post("/remittances")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"senderId\":1,\"receiverId\":2,\"amountBrl\":10}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Header obrigatório ausente: Idempotency-Key"));
+    }
+
+    @Test
+    void malformedIdempotencyKeyReturns400() throws Exception {
+        postRemittance("chave com espaço!", 1, 2, "10")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message", containsString("Idempotency-Key inválida")));
+
+        postRemittance("k".repeat(65), 1, 2, "10").andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void invalidBodyReturns400WithFieldErrors() throws Exception {
+        mockMvc.perform(post("/remittances")
+                        .header("Idempotency-Key", "invalid-body")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"amountBrl\":0}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fieldErrors.senderId").exists())
+                .andExpect(jsonPath("$.fieldErrors.receiverId").exists())
+                .andExpect(jsonPath("$.fieldErrors.amountBrl").value("amountBrl deve ser maior que zero"));
+
+        postRemittance("invalid-body-2", 1, 2, "-10").andExpect(status().isBadRequest());
+        postRemittance("invalid-body-3", 1, 2, "\"abc\"")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message", containsString("amountBrl")));
+    }
+
+    @Test
+    void insufficientBalanceReturns422AndKeepsBalances() throws Exception {
+        long sender = createUser("PF");
+        long receiver = createUser("PF");
+        deposit(sender, "BRL", "50");
+
+        postRemittance("no-funds", sender, receiver, "50.01")
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.message").value("Saldo insuficiente para realizar a remessa"));
+
+        assertThat(walletBalance(sender, "BRL")).isEqualByComparingTo("50");
+        assertThat(walletBalance(receiver, "USD")).isEqualByComparingTo("0");
+        getJson("/users/" + sender + "/remittances").andExpect(jsonPath("$.length()").value(0));
+    }
+
+    @Test
+    void remittanceToSelfReturns422() throws Exception {
+        long user = createUser("PF");
+        deposit(user, "BRL", "100");
+
+        postRemittance("self-1", user, user, "10")
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.message", containsString("próprio usuário")));
+    }
+
+    @Test
+    void unknownSenderOrReceiverReturns404() throws Exception {
+        long user = createUser("PF");
+        deposit(user, "BRL", "100");
+
+        postRemittance("nf-sender", 999999999L, user, "10").andExpect(status().isNotFound());
+        postRemittance("nf-receiver", user, 999999999L, "10").andExpect(status().isNotFound());
+        assertThat(walletBalance(user, "BRL")).isEqualByComparingTo("100");
+    }
+
+    @Test
+    void pfDailyLimitIsTenThousandReais() throws Exception {
+        long sender = createUser("PF");
+        long receiver = createUser("PF");
+        deposit(sender, "BRL", "30000");
+
+        postRemittance("pf-limit-1", sender, receiver, "10000.01")
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.message", containsString("Limite diário")));
+
+        postRemittance("pf-limit-2", sender, receiver, "6000").andExpect(status().isCreated());
+        postRemittance("pf-limit-3", sender, receiver, "4000.01").andExpect(status().isUnprocessableContent());
+        postRemittance("pf-limit-4", sender, receiver, "4000").andExpect(status().isCreated());
+        postRemittance("pf-limit-5", sender, receiver, "0.01").andExpect(status().isUnprocessableContent());
+    }
+
+    @Test
+    void pjDailyLimitIsFiftyThousandReais() throws Exception {
+        long sender = createUser("PJ");
+        long receiver = createUser("PF");
+        deposit(sender, "BRL", "60000");
+
+        postRemittance("pj-limit-1", sender, receiver, "50000").andExpect(status().isCreated());
+        postRemittance("pj-limit-2", sender, receiver, "0.01").andExpect(status().isUnprocessableContent());
+    }
+
+    @Test
+    void dailyLimitOfOneSenderDoesNotAffectAnother() throws Exception {
+        long richSender = createUser("PF");
+        long otherSender = createUser("PF");
+        long receiver = createUser("PF");
+        deposit(richSender, "BRL", "10000");
+        deposit(otherSender, "BRL", "10000");
+
+        postRemittance("iso-1", richSender, receiver, "10000").andExpect(status().isCreated());
+        postRemittance("iso-2", otherSender, receiver, "10000").andExpect(status().isCreated());
+    }
+
+    @Test
+    void sameKeyAndSameDataReplaysTheOriginalWithoutDebitingAgain() throws Exception {
+        long sender = createUser("PF");
+        long receiver = createUser("PF");
+        deposit(sender, "BRL", "500");
+
+        long first = idFrom(postRemittance("replay-1", sender, receiver, "100").andExpect(status().isCreated()));
+        long second = idFrom(postRemittance("replay-1", sender, receiver, "100.00").andExpect(status().isCreated()));
+
+        assertThat(second).isEqualTo(first);
+        assertThat(walletBalance(sender, "BRL")).isEqualByComparingTo("400");
+        assertThat(walletBalance(receiver, "USD")).isEqualByComparingTo("20");
+        getJson("/users/" + sender + "/remittances").andExpect(jsonPath("$.length()").value(1));
+        getJson("/remittances/" + first + "/ledger-entries").andExpect(jsonPath("$.length()").value(2));
+    }
+
+    @Test
+    void sameKeyWithDifferentDataReturns422() throws Exception {
+        long sender = createUser("PF");
+        long receiver = createUser("PF");
+        long another = createUser("PF");
+        deposit(sender, "BRL", "500");
+        postRemittance("reuse-1", sender, receiver, "100").andExpect(status().isCreated());
+
+        postRemittance("reuse-1", sender, receiver, "150")
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.message", containsString("dados diferentes")));
+        postRemittance("reuse-1", sender, another, "100").andExpect(status().isUnprocessableContent());
+
+        assertThat(walletBalance(sender, "BRL")).isEqualByComparingTo("400");
+    }
+
+    @Test
+    void sameKeyCanBeUsedByDifferentSenders() throws Exception {
+        long senderA = createUser("PF");
+        long senderB = createUser("PF");
+        long receiver = createUser("PF");
+        deposit(senderA, "BRL", "100");
+        deposit(senderB, "BRL", "100");
+
+        long a = idFrom(postRemittance("shared-key", senderA, receiver, "10").andExpect(status().isCreated()));
+        long b = idFrom(postRemittance("shared-key", senderB, receiver, "10").andExpect(status().isCreated()));
+
+        assertThat(a).isNotEqualTo(b);
+    }
+
+    @Test
+    void failedAttemptDoesNotBurnTheKey() throws Exception {
+        long sender = createUser("PF");
+        long receiver = createUser("PF");
+
+        postRemittance("retry-1", sender, receiver, "100").andExpect(status().isUnprocessableContent());
+        deposit(sender, "BRL", "100");
+
+        postRemittance("retry-1", sender, receiver, "100").andExpect(status().isCreated());
+    }
+
+    @Test
+    void unavailableQuoteReturns422AndRollsBackEverything() throws Exception {
+        exchangeRateRepository.deleteAll();
+        when(bcbClient.fetchBuyRate(any())).thenReturn(Optional.empty());
+        long sender = createUser("PF");
+        long receiver = createUser("PF");
+        deposit(sender, "BRL", "100");
+
+        postRemittance("no-quote", sender, receiver, "100")
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.message", containsString("Nenhuma cotação")));
+
+        assertThat(walletBalance(sender, "BRL")).isEqualByComparingTo("100");
+        assertThat(walletBalance(receiver, "USD")).isEqualByComparingTo("0");
+        getJson("/users/" + sender + "/ledger-entries").andExpect(jsonPath("$.length()").value(0));
+    }
+
+    @Test
+    void wrongContentTypeMethodAndRouteAreRejectedWithTheStandardBody() throws Exception {
+        mockMvc.perform(post("/remittances")
+                        .header("Idempotency-Key", "ct-1")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content("x"))
+                .andExpect(status().isUnsupportedMediaType())
+                .andExpect(jsonPath("$.status").value(415));
+
+        mockMvc.perform(delete("/remittances/1"))
+                .andExpect(status().isMethodNotAllowed())
+                .andExpect(jsonPath("$.message").value("Método HTTP não permitido para esta rota"));
+
+        getJson("/nao-existe")
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.message").value("Rota não encontrada"));
+    }
+}
