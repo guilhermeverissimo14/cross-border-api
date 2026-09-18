@@ -2,6 +2,7 @@ package com.guilherme.crossborderapi.service;
 
 import com.guilherme.crossborderapi.dto.user.UserCreateRequest;
 import com.guilherme.crossborderapi.dto.user.UserResponse;
+import com.guilherme.crossborderapi.dto.wallet.WalletResponse;
 import com.guilherme.crossborderapi.entity.User;
 import com.guilherme.crossborderapi.entity.Wallet;
 import com.guilherme.crossborderapi.enums.Currency;
@@ -68,6 +69,14 @@ public class UserService {
     public List<UserResponse> getAllUsers() {
         return userRepository.findAll().stream()
                 .map(UserResponse::fromEntity)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<WalletResponse> getUserWallets(Long id) {
+        findUserOrThrow(id);
+        return walletRepository.findByUserId(id).stream()
+                .map(WalletResponse::fromEntity)
                 .toList();
     }
 

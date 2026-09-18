@@ -2,6 +2,7 @@ package com.guilherme.crossborderapi.controller;
 
 import com.guilherme.crossborderapi.dto.user.UserCreateRequest;
 import com.guilherme.crossborderapi.dto.user.UserResponse;
+import com.guilherme.crossborderapi.dto.wallet.WalletResponse;
 import com.guilherme.crossborderapi.service.UserService;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -36,5 +37,10 @@ public class UserController {
     @GetMapping
     public ResponseEntity<List<UserResponse>> getAllUsers() {
         return ResponseEntity.ok(userService.getAllUsers());
+    }
+
+    @GetMapping("/{id}/wallets")
+    public ResponseEntity<List<WalletResponse>> getUserWallets(@PathVariable Long id) {
+        return ResponseEntity.ok(userService.getUserWallets(id));
     }
 }
