@@ -1,0 +1,12 @@
+# Não vai pro contexto de build: nada disso é necessário pra gerar a imagem.
+target/
+.git/
+.github/
+.idea/
+.vscode/
+*.iml
+k8s/
+HELP.md
+README.md
+Dockerfile
+.dockerignore

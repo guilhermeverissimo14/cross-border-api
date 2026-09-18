@@ -17,11 +17,15 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
+import org.springframework.web.HttpMediaTypeNotAcceptableException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 @Slf4j
 @RestControllerAdvice
@@ -126,6 +130,28 @@ public class GlobalExceptionHandler {
         ErrorResponse body = ErrorResponse.of(HttpStatus.BAD_REQUEST,
                 "Valor inválido para o parâmetro '" + ex.getName() + "'");
         return ResponseEntity.badRequest().body(body);
+    }
+
+    // Erros de cliente que o próprio Spring MVC reconhece: rota inexistente, método HTTP ou Content-Type não suportado. 
+    @ExceptionHandler({
+            NoResourceFoundException.class,
+            HttpRequestMethodNotSupportedException.class,
+            HttpMediaTypeNotSupportedException.class,
+            HttpMediaTypeNotAcceptableException.class
+    })
+    public ResponseEntity<ErrorResponse> handleFrameworkClientError(Exception ex) {
+        HttpStatus status = ex instanceof org.springframework.web.ErrorResponse springError
+                ? HttpStatus.valueOf(springError.getStatusCode().value())
+                : HttpStatus.BAD_REQUEST;
+        String message = switch (status) {
+            case NOT_FOUND -> "Rota não encontrada";
+            case METHOD_NOT_ALLOWED -> "Método HTTP não permitido para esta rota";
+            case UNSUPPORTED_MEDIA_TYPE -> "Content-Type não suportado; use application/json";
+            case NOT_ACCEPTABLE -> "Formato de resposta não disponível; use application/json";
+            default -> status.getReasonPhrase();
+        };
+        log.warn("Requisição recusada pelo Spring MVC: {} ({})", status.value(), ex.getClass().getSimpleName());
+        return ResponseEntity.status(status).body(ErrorResponse.of(status, message));
     }
 
     @ExceptionHandler(Exception.class)

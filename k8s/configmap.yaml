@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cross-border-api
+data:
+  # Console do H2 sem autenticação não deve ficar exposto num ambiente implantado.
+  SPRING_H2_CONSOLE_ENABLED: "false"
+  # Sem despejar todo o SQL no log do pod.
+  SPRING_JPA_SHOW_SQL: "false"

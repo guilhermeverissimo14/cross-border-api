@@ -7,6 +7,7 @@ Serviço de remessa entre usuários PF e PJ: converte Real em Dólar com a cota�
 ```bash
 ./mvnw spring-boot:run    # sobe em http://localhost:8080
 ./mvnw test               # roda os testes
+docker build -t cross-border-api:local . && docker run --rm -p 8080:8080 cross-border-api:local
 ```
 Swagger: http://localhost:8080/swagger-ui.html
 
@@ -27,10 +28,18 @@ Ou gerando o jar:
 java -jar target/crossborder-api-0.0.1-SNAPSHOT.jar
 ```
 
+Ou com Docker (não precisa de JDK instalado):
+
+```bash
+docker build -t cross-border-api:local .
+docker run --rm -p 8080:8080 cross-border-api:local
+```
+
 | O quê | Onde |
 |---|---|
 | API | http://localhost:8080 |
 | Swagger UI | http://localhost:8080/swagger-ui.html |
+| Health check | http://localhost:8080/actuator/health |
 | Console do H2 | http://localhost:8080/h2-console — JDBC URL `jdbc:h2:mem:crossborderdb`, usuário `sa`, senha vazia |
 
 > A aplicação também abre o servidor TCP do H2 na porta **9092** (conveniência de desenvolvimento, para consultar o banco pelo terminal). Se essa porta estiver ocupada, desligue com `--app.h2-tcp-server.enabled=false`
@@ -48,7 +57,7 @@ Nenhum teste chama o BCB de verdade. O que está coberto:
 - **Strategy do limite diário**: resolução da política de PF e de PJ.
 - **Cliente do BCB**: resposta normal, dia sem cotação e erro 500, simulados com `MockRestServiceServer`. Um teste separado prova que a chamada **estoura o timeout** contra um servidor que nunca responde.
 - **Integração com banco real (H2)**: lock otimista das carteiras (duas atualizações concorrentes) e subida do contexto, que confere as entidades contra o `schema.sql`.
-- **Tratamento de erros**: mapeamento das exceções para os códigos HTTP.
+- **Tratamento de erros**: mapeamento das exceções para os códigos HTTP, inclusive rota inexistente, método e `Content-Type` não suportados (`404`, `405`, `415`).
 
 ---
 
@@ -96,7 +105,7 @@ Erros seguem sempre o mesmo formato (`timestamp`, `status`, `error`, `message`, 
 
 **Interpretações que tomei onde o enunciado é aberto:**
 - **Remessa para o próprio usuário é bloqueada** (`422`): "remessa entre eles" pressupõe duas partes.
-- **O limite diário** conta o valor em BRL das remessas do remetente no dia corrente do servidor.
+- **O limite diário** conta o valor em BRL das remessas do remetente no dia corrente do servidor (a imagem Docker usa o fuso `America/Sao_Paulo`).
 - **Remessa que falha não é gravada.** Só o erro HTTP volta, e nada fica pela metade.
 
 ## Além do enunciado
@@ -107,6 +116,33 @@ Erros seguem sempre o mesmo formato (`timestamp`, `status`, `error`, `message`, 
 - **Cache das cotações** na tabela `exchange_rates` (uma por dia). É um cache em banco, não Spring Cache/Caffeine.
 - **Cliente do BCB resiliente**: timeouts de 3 s (conexão) e 5 s (leitura); erro ou silêncio da API vira fallback, nunca um 500.
 - **Consultas extras** (remessas, extrato, cotação por data) e logs nos pontos de negócio, sem dados pessoais.
+
+## Docker, Kubernetes e CI/CD
+
+**Docker.** `Dockerfile` multi-stage (build com JDK 21, execução com JRE 21). O container roda como usuário **não-root**, com `TZ=America/Sao_Paulo` (o "dia" do limite diário e da cotação é o do Brasil) e sem o servidor TCP do H2.
+
+**Kubernetes.** Manifestos em `k8s/` (Kustomize): `Deployment`, `Service` e `ConfigMap`.
+
+```bash
+docker build -t cross-border-api:local .
+kubectl apply -k k8s/
+kubectl rollout status deployment/cross-border-api
+kubectl port-forward svc/cross-border-api 8080:8080    # Swagger em http://localhost:8080/swagger-ui.html
+```
+
+Se o cluster não enxergar a imagem local: no kind, `kind load docker-image cross-border-api:local`; no minikube, `minikube image load cross-border-api:local`.
+
+- **1 réplica de propósito.** O banco é H2 em memória: com mais de um pod, cada um teria os seus próprios dados. Com um banco externo dá para escalar.
+- **Probes** de startup, liveness e readiness em `/actuator/health/*` (Actuator; só o `health` é exposto).
+- **Endurecimento:** usuário não-root, raiz somente leitura, sem capabilities, limite de memória (a JVM usa 75% como heap).
+- O `ConfigMap` desliga o console do H2 (sem autenticação) e o log de SQL.
+
+**CI/CD.** GitHub Actions (`.github/workflows/ci.yml`), a cada push na `main` e em todo pull request:
+1. `./mvnw verify`: compila e roda todos os testes;
+2. valida os manifestos (`kustomize` + `kubeconform`);
+3. builda a imagem e faz um **smoke test**: sobe o container e espera o `readiness`.
+
+Em push na `main`, a imagem também é publicada no GitHub Container Registry (`ghcr.io/<dono>/<repo>`, tags `latest` e `sha-...`). O **deploy não é automático**, porque não há cluster para recebê-lo: é o `kubectl apply -k k8s/` acima, apontando para a imagem do registry com `kustomize edit set image cross-border-api=ghcr.io/<dono>/<repo>:<tag>`.
 
 ## Modelo de dados
 

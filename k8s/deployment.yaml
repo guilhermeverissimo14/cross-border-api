@@ -1,0 +1,77 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cross-border-api
+  labels:
+    app: cross-border-api
+spec:
+  # 1 réplica de propósito: o banco é H2 em memória, então cada pod teria os seus próprios dados
+  # (um usuário criado num pod não existiria no outro) e tudo se perde quando o pod reinicia.
+  # Com um banco externo (ex.: PostgreSQL), dá para escalar.
+  replicas: 1
+  # Recreate: nunca dois pods ao mesmo tempo durante uma atualização (cada um teria um banco diferente).
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: cross-border-api
+  template:
+    metadata:
+      labels:
+        app: cross-border-api
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: api
+          image: cross-border-api
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: cross-border-api
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              # A JVM usa 75% disso como heap (-XX:MaxRAMPercentage=75, definido na imagem).
+              memory: 768Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          # Dá até 60 s para a aplicação subir antes de a liveness começar a valer.
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 2
+            failureThreshold: 30
+          # Só recebe tráfego do Service quando estiver pronta.
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            periodSeconds: 5
+          # Reinicia o pod se a aplicação travar.
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        # O Tomcat precisa de um diretório temporário gravável, já que a raiz do container é só leitura.
+        - name: tmp
+          emptyDir: {}

@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - configmap.yaml
+  - deployment.yaml
+  - service.yaml
+
+# Imagem construída localmente (docker build -t cross-border-api:local .).
+# Para usar a do registry: kustomize edit set image cross-border-api=ghcr.io/<dono>/<repo>:<tag>
+images:
+  - name: cross-border-api
+    newTag: local
