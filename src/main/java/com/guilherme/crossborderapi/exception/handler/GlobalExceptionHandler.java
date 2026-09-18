@@ -1,6 +1,7 @@
 package com.guilherme.crossborderapi.exception.handler;
 
 import com.guilherme.crossborderapi.exception.DuplicateResourceException;
+import com.guilherme.crossborderapi.exception.ResourceNotFoundException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
@@ -16,6 +17,12 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleDuplicateResource(DuplicateResourceException ex) {
         ErrorResponse body = ErrorResponse.of(HttpStatus.CONFLICT, ex.getMessage());
         return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
+    }
+
+    @ExceptionHandler(ResourceNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleResourceNotFound(ResourceNotFoundException ex) {
+        ErrorResponse body = ErrorResponse.of(HttpStatus.NOT_FOUND, ex.getMessage());
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(body);
     }
 
     //Se acotecer algum erro de validação, o Spring lança uma exceção MethodArgumentNotValidException.
