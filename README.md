@@ -6,7 +6,7 @@ Serviço de remessa entre usuários PF e PJ: converte Real em Dólar com a cota�
 
 ```bash
 ./mvnw spring-boot:run    # sobe em http://localhost:8080
-./mvnw test               # roda os testes
+./mvnw verify             # roda os testes e gera o relatório de cobertura
 docker build -t cross-border-api:local . && docker run --rm -p 8080:8080 cross-border-api:local
 ```
 Swagger: http://localhost:8080/swagger-ui.html
@@ -48,16 +48,19 @@ docker run --rm -p 8080:8080 cross-border-api:local
 ## Como rodar os testes
 
 ```bash
-./mvnw test
+./mvnw verify
 ```
+
+Além dos testes, gera o relatório de cobertura (JaCoCo) em `target/site/jacoco/index.html`: cerca de **97% das linhas** e **91% dos branches**. Só o `./mvnw test` roda os testes, sem o relatório.
 
 Nenhum teste chama o BCB de verdade. O que está coberto:
 
-- **Regras de negócio** (Mockito): remessa (validações, conversão, débito/crédito, ledger, limite diário, idempotência), cotação (cache, fallback, erros) e extrato.
+- **Endpoints (integração ponta a ponta)**: os 11 endpoints via MockMvc, passando por controller, service e H2 real, com só o BCB simulado. Cobre sucesso e erros (`400`, `404`, `409`, `422`), limites PF/PJ, idempotência, rollback e fallback de cotação.
+- **Regras de negócio (Mockito)**: cadastro e depósito, remessa (validações, conversão, débito/crédito, ledger, limite diário, idempotência), cotação (cache, fallback, erros) e extrato.
 - **Strategy do limite diário**: resolução da política de PF e de PJ.
 - **Cliente do BCB**: resposta normal, dia sem cotação e erro 500, simulados com `MockRestServiceServer`. Um teste separado prova que a chamada **estoura o timeout** contra um servidor que nunca responde.
-- **Integração com banco real (H2)**: lock otimista das carteiras (duas atualizações concorrentes) e subida do contexto, que confere as entidades contra o `schema.sql`.
-- **Tratamento de erros**: mapeamento das exceções para os códigos HTTP, inclusive rota inexistente, método e `Content-Type` não suportados (`404`, `405`, `415`).
+- **Banco real (H2)**: lock otimista das carteiras (duas atualizações concorrentes) e subida do contexto, que confere as entidades contra o `schema.sql`.
+- **Tratamento de erros**: mapeamento das exceções para os códigos HTTP, inclusive rota inexistente, método e `Content-Type` não suportados (`404`, `405`, `415`), conflitos (`409`) e erro inesperado (`500`, sem vazar detalhes).
 
 ---
 
@@ -89,7 +92,7 @@ Erros seguem sempre o mesmo formato (`timestamp`, `status`, `error`, `message`, 
 
 ---
 
-## O que o enunciado pede e como foi feito
+## O que foi solicitado e como foi feito
 
 | Requisito | Como foi atendido |
 |---|---|
@@ -108,7 +111,7 @@ Erros seguem sempre o mesmo formato (`timestamp`, `status`, `error`, `message`, 
 - **O limite diário** conta o valor em BRL das remessas do remetente no dia corrente do servidor (a imagem Docker usa o fuso `America/Sao_Paulo`).
 - **Remessa que falha não é gravada.** Só o erro HTTP volta, e nada fica pela metade.
 
-## Além do enunciado
+## Além do que foi solicitado
 
 - **Idempotência.** `POST /remittances` exige `Idempotency-Key`; há `UNIQUE (sender_id, idempotency_key)` no banco. Repetir a chamada devolve a remessa original; mesma chave com dados diferentes é recusada; duas requisições simultâneas com a mesma chave → uma leva `409`. Medido localmente: sem a chave, dois cliques com 50 ms de intervalo debitavam **duas vezes** (12 de 12 tentativas); com ela, uma.
 - **Lock otimista** (`@Version`) nas carteiras: duas remessas concorrentes na mesma carteira, uma leva `409` em vez de sobrescrever o saldo.
