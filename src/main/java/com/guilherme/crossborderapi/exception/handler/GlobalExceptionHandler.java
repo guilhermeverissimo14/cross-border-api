@@ -1,6 +1,7 @@
 package com.guilherme.crossborderapi.exception.handler;
 
 import com.guilherme.crossborderapi.exception.DuplicateResourceException;
+import com.guilherme.crossborderapi.exception.ExchangeRateUnavailableException;
 import com.guilherme.crossborderapi.exception.ResourceNotFoundException;
 import tools.jackson.databind.exc.InvalidFormatException;
 import java.util.LinkedHashMap;
@@ -25,6 +26,12 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleResourceNotFound(ResourceNotFoundException ex) {
         ErrorResponse body = ErrorResponse.of(HttpStatus.NOT_FOUND, ex.getMessage());
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(body);
+    }
+
+    @ExceptionHandler(ExchangeRateUnavailableException.class)
+    public ResponseEntity<ErrorResponse> handleExchangeRateUnavailable(ExchangeRateUnavailableException ex) {
+        ErrorResponse body = ErrorResponse.of(HttpStatus.UNPROCESSABLE_CONTENT, ex.getMessage());
+        return ResponseEntity.status(HttpStatus.UNPROCESSABLE_CONTENT).body(body);
     }
 
     // Erro de desserialização do JSON (ex: valor de enum inválido) acontece antes do @Valid rodar,
