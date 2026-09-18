@@ -15,6 +15,8 @@ import com.guilherme.crossborderapi.entity.User;
 import com.guilherme.crossborderapi.entity.Wallet;
 import com.guilherme.crossborderapi.enums.Currency;
 import com.guilherme.crossborderapi.enums.LedgerEntryType;
+import com.guilherme.crossborderapi.enums.UserType;
+import com.guilherme.crossborderapi.exception.DailyLimitExceededException;
 import com.guilherme.crossborderapi.exception.InsufficientBalanceException;
 import com.guilherme.crossborderapi.exception.ResourceNotFoundException;
 import com.guilherme.crossborderapi.exception.SelfRemittanceException;
@@ -22,8 +24,10 @@ import com.guilherme.crossborderapi.repository.LedgerEntryRepository;
 import com.guilherme.crossborderapi.repository.RemittanceRepository;
 import com.guilherme.crossborderapi.repository.UserRepository;
 import com.guilherme.crossborderapi.repository.WalletRepository;
+import com.guilherme.crossborderapi.service.dailylimit.DailyLimitPolicyProvider;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -49,6 +53,9 @@ class RemittanceServiceTest {
 
     @Mock
     private ExchangeRateService exchangeRateService;
+
+    @Mock
+    private DailyLimitPolicyProvider dailyLimitPolicyProvider;
 
     @InjectMocks
     private RemittanceService remittanceService;
@@ -95,9 +102,29 @@ class RemittanceServiceTest {
     }
 
     @Test
+    void throwsWhenDailyLimitExceeded() {
+        RemittanceCreateRequest request = new RemittanceCreateRequest(1L, 2L, new BigDecimal("1000.00"));
+        User sender = User.builder().id(1L).userType(UserType.PF).build();
+        User receiver = User.builder().id(2L).build();
+
+        when(userRepository.findById(1L)).thenReturn(Optional.of(sender));
+        when(userRepository.findById(2L)).thenReturn(Optional.of(receiver));
+        when(walletRepository.findByUserIdAndCurrency(1L, Currency.BRL))
+                .thenReturn(Optional.of(Wallet.builder().balance(new BigDecimal("5000.00")).build()));
+        when(walletRepository.findByUserIdAndCurrency(2L, Currency.USD))
+                .thenReturn(Optional.of(Wallet.builder().balance(BigDecimal.ZERO).build()));
+        when(dailyLimitPolicyProvider.getDailyLimit(UserType.PF)).thenReturn(new BigDecimal("10000.00"));
+        when(remittanceRepository.sumAmountBrlBySender(any(), any(LocalDateTime.class), any(LocalDateTime.class)))
+                .thenReturn(new BigDecimal("9500.00")); // já enviou 9500 hoje, +1000 estouraria os 10000
+
+        assertThatThrownBy(() -> remittanceService.createRemittance(request))
+                .isInstanceOf(DailyLimitExceededException.class);
+    }
+
+    @Test
     void createsRemittanceSuccessfully() {
         RemittanceCreateRequest request = new RemittanceCreateRequest(1L, 2L, new BigDecimal("1000.00"));
-        User sender = User.builder().id(1L).build();
+        User sender = User.builder().id(1L).userType(UserType.PF).build();
         User receiver = User.builder().id(2L).build();
         Wallet senderWallet = Wallet.builder().balance(new BigDecimal("2000.00")).build();
         Wallet receiverWallet = Wallet.builder().balance(BigDecimal.ZERO).build();
@@ -106,6 +133,9 @@ class RemittanceServiceTest {
         when(userRepository.findById(2L)).thenReturn(Optional.of(receiver));
         when(walletRepository.findByUserIdAndCurrency(1L, Currency.BRL)).thenReturn(Optional.of(senderWallet));
         when(walletRepository.findByUserIdAndCurrency(2L, Currency.USD)).thenReturn(Optional.of(receiverWallet));
+        when(dailyLimitPolicyProvider.getDailyLimit(UserType.PF)).thenReturn(new BigDecimal("10000.00"));
+        when(remittanceRepository.sumAmountBrlBySender(any(), any(LocalDateTime.class), any(LocalDateTime.class)))
+                .thenReturn(BigDecimal.ZERO);
         when(exchangeRateService.getBuyRate(any(LocalDate.class))).thenReturn(new BigDecimal("5.00"));
         when(remittanceRepository.save(any(Remittance.class))).thenAnswer(invocation -> {
             Remittance remittance = invocation.getArgument(0);

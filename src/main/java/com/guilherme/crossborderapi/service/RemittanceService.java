@@ -10,6 +10,7 @@ import com.guilherme.crossborderapi.enums.Currency;
 import com.guilherme.crossborderapi.enums.LedgerEntryType;
 import com.guilherme.crossborderapi.enums.RemittanceDirection;
 import com.guilherme.crossborderapi.enums.RemittanceStatus;
+import com.guilherme.crossborderapi.exception.DailyLimitExceededException;
 import com.guilherme.crossborderapi.exception.InsufficientBalanceException;
 import com.guilherme.crossborderapi.exception.ResourceNotFoundException;
 import com.guilherme.crossborderapi.exception.SelfRemittanceException;
@@ -17,6 +18,7 @@ import com.guilherme.crossborderapi.repository.LedgerEntryRepository;
 import com.guilherme.crossborderapi.repository.RemittanceRepository;
 import com.guilherme.crossborderapi.repository.UserRepository;
 import com.guilherme.crossborderapi.repository.WalletRepository;
+import com.guilherme.crossborderapi.service.dailylimit.DailyLimitPolicyProvider;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
@@ -38,6 +40,7 @@ public class RemittanceService {
     private final RemittanceRepository remittanceRepository;
     private final LedgerEntryRepository ledgerEntryRepository;
     private final ExchangeRateService exchangeRateService;
+    private final DailyLimitPolicyProvider dailyLimitPolicyProvider;
 
     @Transactional
     public RemittanceResponse createRemittance(RemittanceCreateRequest request) {
@@ -57,6 +60,8 @@ public class RemittanceService {
         if (senderWallet.getBalance().compareTo(amountBrl) < 0) {
             throw new InsufficientBalanceException("Saldo insuficiente para realizar a remessa");
         }
+
+        validateDailyLimit(sender, amountBrl);
 
         BigDecimal exchangeRate = exchangeRateService.getBuyRate(LocalDate.now());
         BigDecimal amountUsd = amountBrl.divide(exchangeRate, MONEY_SCALE, RoundingMode.HALF_UP); //mesma coisa de amountBrl / exchangeRate
@@ -80,6 +85,19 @@ public class RemittanceService {
         registerLedgerEntries(senderWallet, receiverWallet, amountBrl, amountUsd, savedRemittance.getId());
 
         return RemittanceResponse.fromEntity(savedRemittance);
+    }
+
+    private void validateDailyLimit(User sender, BigDecimal amountBrl) {
+        BigDecimal dailyLimit = dailyLimitPolicyProvider.getDailyLimit(sender.getUserType());
+
+        LocalDate today = LocalDate.now();
+        BigDecimal alreadySentToday = remittanceRepository.sumAmountBrlBySender(
+                sender.getId(), today.atStartOfDay(), today.plusDays(1).atStartOfDay());
+
+        if (alreadySentToday.add(amountBrl).compareTo(dailyLimit) > 0) {
+            throw new DailyLimitExceededException(
+                    "Limite diário de R$ " + dailyLimit + " excedido. Já enviado hoje: R$ " + alreadySentToday);
+        }
     }
 
     private void registerLedgerEntries(Wallet senderWallet, Wallet receiverWallet,
