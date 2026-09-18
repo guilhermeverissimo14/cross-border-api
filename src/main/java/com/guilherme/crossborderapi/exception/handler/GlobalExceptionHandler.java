@@ -6,6 +6,7 @@ import com.guilherme.crossborderapi.exception.ExchangeRateUnavailableException;
 import com.guilherme.crossborderapi.exception.IdempotencyKeyInUseException;
 import com.guilherme.crossborderapi.exception.IdempotencyKeyReuseException;
 import com.guilherme.crossborderapi.exception.InsufficientBalanceException;
+import com.guilherme.crossborderapi.exception.InvalidCredentialsException;
 import com.guilherme.crossborderapi.exception.InvalidIdempotencyKeyException;
 import com.guilherme.crossborderapi.exception.ResourceNotFoundException;
 import com.guilherme.crossborderapi.exception.SelfRemittanceException;
@@ -57,6 +58,13 @@ public class GlobalExceptionHandler {
         log.warn("Regra de negócio violada: {}", ex.getMessage());
         ErrorResponse body = ErrorResponse.of(HttpStatus.UNPROCESSABLE_CONTENT, ex.getMessage());
         return ResponseEntity.status(HttpStatus.UNPROCESSABLE_CONTENT).body(body);
+    }
+
+    @ExceptionHandler(InvalidCredentialsException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidCredentials(InvalidCredentialsException ex) {
+        log.warn("Tentativa de login com credenciais inválidas");
+        ErrorResponse body = ErrorResponse.of(HttpStatus.UNAUTHORIZED, ex.getMessage());
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(body);
     }
 
     // Outra requisição com a mesma Idempotency-Key gravou primeiro: o cliente repete e recebe o resultado guardado.
