@@ -1,6 +1,7 @@
 package com.guilherme.crossborderapi.service;
 
 import com.guilherme.crossborderapi.client.BcbExchangeRateClient;
+import com.guilherme.crossborderapi.dto.exchangerate.ExchangeRateQuote;
 import com.guilherme.crossborderapi.entity.ExchangeRate;
 import com.guilherme.crossborderapi.exception.ExchangeRateUnavailableException;
 import com.guilherme.crossborderapi.repository.ExchangeRateRepository;
@@ -23,10 +24,19 @@ public class ExchangeRateService {
     private final ExchangeRateRepository exchangeRateRepository;
     private final BcbExchangeRateClient bcbExchangeRateClient;
 
-    // Tenta a data pedida; se não tiver cotação (fim de semana, feriado ou API fora do ar os dois
-    // casos chegam aqui como Optional vazio), tenta o dia anterior, e assim por diante.
     @Transactional
     public BigDecimal getBuyRate(LocalDate date) {
+        return getQuote(date).buyRate();
+    }
+
+    // Tenta a data pedida; se não tiver cotação (fim de semana, feriado ou API fora do ar os dois casos chegam aqui como Optional vazio), tenta o dia anterior, e assim por diante.
+    // Devolve também a data em que a cotação realmente existe, pra quem consulta enxergar o fallback.
+    @Transactional
+    public ExchangeRateQuote getQuote(LocalDate date) {
+        if (date.isAfter(LocalDate.now())) {
+            throw new ExchangeRateUnavailableException("Não existe cotação para datas futuras: " + date);
+        }
+
         LocalDate candidateDate = date;
 
         for (int i = 0; i <= MAX_LOOKBACK_DAYS; i++) {
@@ -35,7 +45,7 @@ public class ExchangeRateService {
             if (cached.isPresent()) {
                 log.debug("Cotação de {} encontrada em cache: {}", candidateDate, cached.get());
                 logIfFallback(date, candidateDate);
-                return cached.get();
+                return new ExchangeRateQuote(candidateDate, cached.get());
             }
 
             //verifica na api e se encontrar salva no banco
@@ -44,7 +54,7 @@ public class ExchangeRateService {
                 cacheQuote(candidateDate, fetched.get());
                 log.info("Cotação de {} obtida do BCB e salva em cache: {}", candidateDate, fetched.get());
                 logIfFallback(date, candidateDate);
-                return fetched.get();
+                return new ExchangeRateQuote(candidateDate, fetched.get());
             }
 
             candidateDate = candidateDate.minusDays(1); // se chegou aqui tenta um dia anterior

@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.guilherme.crossborderapi.client.BcbExchangeRateClient;
+import com.guilherme.crossborderapi.dto.exchangerate.ExchangeRateQuote;
 import com.guilherme.crossborderapi.entity.ExchangeRate;
 import com.guilherme.crossborderapi.exception.ExchangeRateUnavailableException;
 import com.guilherme.crossborderapi.repository.ExchangeRateRepository;
@@ -111,6 +112,46 @@ class ExchangeRateServiceTest {
 
         assertThat(result).isEqualByComparingTo("5.10");
         verify(bcbExchangeRateClient, never()).fetchBuyRate(friday);
+    }
+
+    @Test
+    void getQuoteReportsTheRequestedDateWhenItHasAQuote() {
+        LocalDate date = LocalDate.of(2026, 9, 17);
+        when(exchangeRateRepository.findByQuoteDate(date)).thenReturn(Optional.of(
+                ExchangeRate.builder().quoteDate(date).buyRate(new BigDecimal("5.1515")).build()));
+
+        ExchangeRateQuote quote = exchangeRateService.getQuote(date);
+
+        assertThat(quote.quoteDate()).isEqualTo(date);
+        assertThat(quote.buyRate()).isEqualByComparingTo("5.1515");
+    }
+
+    @Test
+    void getQuoteReportsTheFallbackDateWhenRequestedDayHasNoQuote() {
+        LocalDate sunday = LocalDate.of(2026, 9, 13);
+        LocalDate saturday = sunday.minusDays(1);
+        LocalDate friday = sunday.minusDays(2);
+
+        when(exchangeRateRepository.findByQuoteDate(sunday)).thenReturn(Optional.empty());
+        when(bcbExchangeRateClient.fetchBuyRate(sunday)).thenReturn(Optional.empty());
+        when(exchangeRateRepository.findByQuoteDate(saturday)).thenReturn(Optional.empty());
+        when(bcbExchangeRateClient.fetchBuyRate(saturday)).thenReturn(Optional.empty());
+        when(exchangeRateRepository.findByQuoteDate(friday)).thenReturn(Optional.empty());
+        when(bcbExchangeRateClient.fetchBuyRate(friday)).thenReturn(Optional.of(new BigDecimal("5.10")));
+
+        ExchangeRateQuote quote = exchangeRateService.getQuote(sunday);
+
+        assertThat(quote.quoteDate()).isEqualTo(friday); // a data em que a cotação existe, não a pedida
+        assertThat(quote.buyRate()).isEqualByComparingTo("5.10");
+    }
+
+    @Test
+    void rejectsFutureDatesWithoutTouchingTheCacheOrBcb() {
+        LocalDate tomorrow = LocalDate.now().plusDays(1);
+
+        assertThatThrownBy(() -> exchangeRateService.getQuote(tomorrow))
+                .isInstanceOf(ExchangeRateUnavailableException.class);
+        verifyNoInteractions(exchangeRateRepository, bcbExchangeRateClient);
     }
 
     @Test
