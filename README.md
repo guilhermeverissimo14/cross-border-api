@@ -120,7 +120,7 @@ Erros seguem sempre o mesmo formato (`timestamp`, `status`, `error`, `message`, 
 
 ---
 
-## Limitações e o que ficou de fora
+## Melhorias
 
 - **USD → BRL não foi implementado.** O modelo já está preparado (coluna `direction`), mas faltam decisões de produto: qual cotação usar na volta (compra ou venda) e como contar o limite diário.
 - **Uma cotação por dia.** A PTAX de fechamento sai por volta das 13h; antes disso vale a do dia anterior, e a variação durante o dia não é refletida (em 17/09 o dólar variou cerca de 0,5% entre a abertura e as 11h). Os boletins intradiários do BCB seriam uma melhoria.
