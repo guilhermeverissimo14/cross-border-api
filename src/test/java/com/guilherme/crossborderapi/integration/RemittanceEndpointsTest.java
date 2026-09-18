@@ -13,6 +13,7 @@ import com.guilherme.crossborderapi.repository.ExchangeRateRepository;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 
 class RemittanceEndpointsTest extends ApiIntegrationTest {
@@ -78,6 +79,7 @@ class RemittanceEndpointsTest extends ApiIntegrationTest {
     @Test
     void missingIdempotencyKeyReturns400() throws Exception {
         mockMvc.perform(post("/remittances")
+                        .header(HttpHeaders.AUTHORIZATION, bearer())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"senderId\":1,\"receiverId\":2,\"amountBrl\":10}"))
                 .andExpect(status().isBadRequest())
@@ -96,6 +98,7 @@ class RemittanceEndpointsTest extends ApiIntegrationTest {
     @Test
     void invalidBodyReturns400WithFieldErrors() throws Exception {
         mockMvc.perform(post("/remittances")
+                        .header(HttpHeaders.AUTHORIZATION, bearer())
                         .header("Idempotency-Key", "invalid-body")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"amountBrl\":0}"))
@@ -260,13 +263,14 @@ class RemittanceEndpointsTest extends ApiIntegrationTest {
     @Test
     void wrongContentTypeMethodAndRouteAreRejectedWithTheStandardBody() throws Exception {
         mockMvc.perform(post("/remittances")
+                        .header(HttpHeaders.AUTHORIZATION, bearer())
                         .header("Idempotency-Key", "ct-1")
                         .contentType(MediaType.TEXT_PLAIN)
                         .content("x"))
                 .andExpect(status().isUnsupportedMediaType())
                 .andExpect(jsonPath("$.status").value(415));
 
-        mockMvc.perform(delete("/remittances/1"))
+        mockMvc.perform(delete("/remittances/1").header(HttpHeaders.AUTHORIZATION, bearer()))
                 .andExpect(status().isMethodNotAllowed())
                 .andExpect(jsonPath("$.message").value("Método HTTP não permitido para esta rota"));
 

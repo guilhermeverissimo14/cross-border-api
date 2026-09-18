@@ -10,6 +10,7 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.time.LocalDate;
 import lombok.RequiredArgsConstructor;
@@ -44,6 +45,7 @@ public class ExchangeRateController {
             @ApiResponse(responseCode = "422", description = "Data futura, ou nenhuma cotação nos últimos 7 dias",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     })
+    @SecurityRequirements
     @GetMapping("/{data}")
     public ResponseEntity<ExchangeRateResponse> getExchangeRate(
             @Parameter(description = "Data no formato AAAA-MM-DD", example = "2026-09-17")

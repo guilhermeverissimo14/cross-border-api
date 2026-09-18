@@ -29,6 +29,6 @@ public class OpenApiConfig {
                         .version("v1")
                         .contact(new Contact()
                                 .name("Guilherme")
-                                .email("guilherme.andrade@siprov.com.br")));
+                                .email("guilherme.teste.com.br")));
     }
 }

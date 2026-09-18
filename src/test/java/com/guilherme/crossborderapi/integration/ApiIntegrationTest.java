@@ -16,6 +16,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -30,6 +31,8 @@ public abstract class ApiIntegrationTest {
 
     private static final AtomicLong SEQUENCE = new AtomicLong(System.currentTimeMillis() % 1_000_000_000L);
 
+    private static String callerToken;
+
     @Autowired
     protected MockMvc mockMvc;
 
@@ -39,6 +42,21 @@ public abstract class ApiIntegrationTest {
     @BeforeEach
     void stubBcbWithDefaultRate() {
         when(bcbClient.fetchBuyRate(any())).thenReturn(Optional.of(DEFAULT_RATE));
+    }
+
+    // Um usuário qualquer autenticado, reaproveitado por todos os testes
+    protected synchronized String bearer() throws Exception {
+        if (callerToken == null) {
+            long n = SEQUENCE.incrementAndGet();
+            mockMvc.perform(post("/users").contentType(MediaType.APPLICATION_JSON).content(
+                    ("{\"fullName\":\"Caller\",\"email\":\"caller%d@teste.com\",\"password\":\"senha123\","
+                            + "\"userType\":\"PF\",\"document\":\"%011d\"}").formatted(n, n)));
+            String body = mockMvc.perform(post("/auth/login").contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"email\":\"caller%d@teste.com\",\"password\":\"senha123\"}".formatted(n)))
+                    .andReturn().getResponse().getContentAsString();
+            callerToken = JsonPath.read(body, "$.accessToken");
+        }
+        return "Bearer " + callerToken;
     }
 
     protected long createUser(String userType) throws Exception {
@@ -59,6 +77,7 @@ public abstract class ApiIntegrationTest {
     protected ResultActions postRemittance(String idempotencyKey, long senderId, long receiverId, String amountBrl)
             throws Exception {
         return mockMvc.perform(post("/remittances")
+                .header(HttpHeaders.AUTHORIZATION, bearer())
                 .header("Idempotency-Key", idempotencyKey)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"senderId\":%d,\"receiverId\":%d,\"amountBrl\":%s}"
@@ -71,11 +90,12 @@ public abstract class ApiIntegrationTest {
     }
 
     protected ResultActions postJson(String url, String json) throws Exception {
-        return mockMvc.perform(post(url).contentType(MediaType.APPLICATION_JSON).content(json));
+        return mockMvc.perform(post(url).header(HttpHeaders.AUTHORIZATION, bearer())
+                .contentType(MediaType.APPLICATION_JSON).content(json));
     }
 
     protected ResultActions getJson(String url) throws Exception {
-        return mockMvc.perform(get(url));
+        return mockMvc.perform(get(url).header(HttpHeaders.AUTHORIZATION, bearer()));
     }
 
     protected BigDecimal walletBalance(long userId, String currency) throws Exception {
