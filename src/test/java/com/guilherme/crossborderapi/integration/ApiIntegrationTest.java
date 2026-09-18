@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.guilherme.crossborderapi.client.BcbExchangeRateClient;
 import com.jayway.jsonpath.JsonPath;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
@@ -18,6 +19,11 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
+import org.springframework.security.oauth2.jwt.JwsHeader;
+import org.springframework.security.oauth2.jwt.JwtClaimsSet;
+import org.springframework.security.oauth2.jwt.JwtEncoder;
+import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
@@ -31,10 +37,11 @@ public abstract class ApiIntegrationTest {
 
     private static final AtomicLong SEQUENCE = new AtomicLong(System.currentTimeMillis() % 1_000_000_000L);
 
-    private static String callerToken;
-
     @Autowired
     protected MockMvc mockMvc;
+
+    @Autowired
+    private JwtEncoder jwtEncoder;
 
     @MockitoBean
     protected BcbExchangeRateClient bcbClient;
@@ -44,19 +51,18 @@ public abstract class ApiIntegrationTest {
         when(bcbClient.fetchBuyRate(any())).thenReturn(Optional.of(DEFAULT_RATE));
     }
 
-    // Um usuário qualquer autenticado, reaproveitado por todos os testes
-    protected synchronized String bearer() throws Exception {
-        if (callerToken == null) {
-            long n = SEQUENCE.incrementAndGet();
-            mockMvc.perform(post("/users").contentType(MediaType.APPLICATION_JSON).content(
-                    ("{\"fullName\":\"Caller\",\"email\":\"caller%d@teste.com\",\"password\":\"senha123\","
-                            + "\"userType\":\"PF\",\"document\":\"%011d\"}").formatted(n, n)));
-            String body = mockMvc.perform(post("/auth/login").contentType(MediaType.APPLICATION_JSON)
-                            .content("{\"email\":\"caller%d@teste.com\",\"password\":\"senha123\"}".formatted(n)))
-                    .andReturn().getResponse().getContentAsString();
-            callerToken = JsonPath.read(body, "$.accessToken");
-        }
-        return "Bearer " + callerToken;
+    // Token forjado direto com o encoder, sem passar pelo login
+    protected String tokenFor(long userId) {
+        Instant now = Instant.now();
+        JwtClaimsSet claims = JwtClaimsSet.builder()
+                .subject(String.valueOf(userId)).issuedAt(now).expiresAt(now.plusSeconds(3600)).build();
+        return "Bearer " + jwtEncoder.encode(
+                JwtEncoderParameters.from(JwsHeader.with(MacAlgorithm.HS256).build(), claims)).getTokenValue();
+    }
+
+    // Usuário qualquer autenticado (id inexistente): serve para rotas que não dependem de quem chama
+    protected String bearer() {
+        return tokenFor(-1L);
     }
 
     protected long createUser(String userType) throws Exception {
@@ -69,24 +75,33 @@ public abstract class ApiIntegrationTest {
     }
 
     protected void deposit(long userId, String currency, String amount) throws Exception {
-        postJson("/users/" + userId + "/wallets/deposit",
+        postAs(userId, "/users/" + userId + "/wallets/deposit",
                 "{\"currency\":\"%s\",\"amount\":%s}".formatted(currency, amount))
                 .andExpect(status().isOk());
     }
 
+    // O remetente é o dono do token
     protected ResultActions postRemittance(String idempotencyKey, long senderId, long receiverId, String amountBrl)
             throws Exception {
         return mockMvc.perform(post("/remittances")
-                .header(HttpHeaders.AUTHORIZATION, bearer())
+                .header(HttpHeaders.AUTHORIZATION, tokenFor(senderId))
                 .header("Idempotency-Key", idempotencyKey)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"senderId\":%d,\"receiverId\":%d,\"amountBrl\":%s}"
-                        .formatted(senderId, receiverId, amountBrl)));
+                .content("{\"receiverId\":%d,\"amountBrl\":%s}".formatted(receiverId, amountBrl)));
     }
 
     protected long createRemittance(long senderId, long receiverId, String amountBrl) throws Exception {
         String key = "key-" + SEQUENCE.incrementAndGet();
         return idFrom(postRemittance(key, senderId, receiverId, amountBrl).andExpect(status().isCreated()));
+    }
+
+    protected ResultActions postAs(long userId, String url, String json) throws Exception {
+        return mockMvc.perform(post(url).header(HttpHeaders.AUTHORIZATION, tokenFor(userId))
+                .contentType(MediaType.APPLICATION_JSON).content(json));
+    }
+
+    protected ResultActions getAs(long userId, String url) throws Exception {
+        return mockMvc.perform(get(url).header(HttpHeaders.AUTHORIZATION, tokenFor(userId)));
     }
 
     protected ResultActions postJson(String url, String json) throws Exception {
@@ -99,7 +114,7 @@ public abstract class ApiIntegrationTest {
     }
 
     protected BigDecimal walletBalance(long userId, String currency) throws Exception {
-        String body = getJson("/users/" + userId + "/wallets").andReturn().getResponse().getContentAsString();
+        String body = getAs(userId, "/users/" + userId + "/wallets").andReturn().getResponse().getContentAsString();
         return new BigDecimal(JsonPath.<List<Object>>read(body, "$.balances[?(@.currency=='" + currency + "')].balance")
                 .get(0).toString());
     }

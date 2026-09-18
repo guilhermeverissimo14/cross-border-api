@@ -14,7 +14,7 @@ class LedgerEndpointsTest extends ApiIntegrationTest {
         deposit(sender, "BRL", "1000");
         long remittanceId = createRemittance(sender, receiver, "100");
 
-        getJson("/remittances/" + remittanceId + "/ledger-entries")
+        getAs(sender, "/remittances/" + remittanceId + "/ledger-entries")
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(2))
                 .andExpect(jsonPath("$[0].type").value("DEBIT"))
@@ -36,14 +36,14 @@ class LedgerEndpointsTest extends ApiIntegrationTest {
         long first = createRemittance(sender, receiver, "100");
         long second = createRemittance(sender, receiver, "300");
 
-        getJson("/users/" + sender + "/ledger-entries")
+        getAs(sender, "/users/" + sender + "/ledger-entries")
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(2))
                 .andExpect(jsonPath("$[0].referenceId").value(second))
                 .andExpect(jsonPath("$[0].type").value("DEBIT"))
                 .andExpect(jsonPath("$[1].referenceId").value(first));
 
-        getJson("/users/" + receiver + "/ledger-entries")
+        getAs(receiver, "/users/" + receiver + "/ledger-entries")
                 .andExpect(jsonPath("$.length()").value(2))
                 .andExpect(jsonPath("$[0].type").value("CREDIT"))
                 .andExpect(jsonPath("$[0].amount").value(60.0));
@@ -56,12 +56,12 @@ class LedgerEndpointsTest extends ApiIntegrationTest {
         deposit(sender, "BRL", "500");
         createRemittance(sender, receiver, "100");
 
-        getJson("/users/" + sender + "/ledger-entries?currency=BRL")
+        getAs(sender, "/users/" + sender + "/ledger-entries?currency=BRL")
                 .andExpect(jsonPath("$.length()").value(1))
                 .andExpect(jsonPath("$[0].currency").value("BRL"));
-        getJson("/users/" + sender + "/ledger-entries?currency=USD")
+        getAs(sender, "/users/" + sender + "/ledger-entries?currency=USD")
                 .andExpect(jsonPath("$.length()").value(0));
-        getJson("/users/" + receiver + "/ledger-entries?currency=USD")
+        getAs(receiver, "/users/" + receiver + "/ledger-entries?currency=USD")
                 .andExpect(jsonPath("$.length()").value(1))
                 .andExpect(jsonPath("$[0].type").value("CREDIT"));
     }
@@ -71,7 +71,7 @@ class LedgerEndpointsTest extends ApiIntegrationTest {
         long user = createUser("PF");
         deposit(user, "BRL", "100");
 
-        getJson("/users/" + user + "/ledger-entries")
+        getAs(user, "/users/" + user + "/ledger-entries")
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(0));
     }
@@ -80,22 +80,22 @@ class LedgerEndpointsTest extends ApiIntegrationTest {
     void invalidCurrencyReturns400() throws Exception {
         long user = createUser("PF");
 
-        getJson("/users/" + user + "/ledger-entries?currency=EUR")
+        getAs(user, "/users/" + user + "/ledger-entries?currency=EUR")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("Valor inválido para o parâmetro 'currency'"));
     }
 
     @Test
     void unknownUserOrRemittanceReturns404() throws Exception {
-        getJson("/users/999999999/ledger-entries").andExpect(status().isNotFound());
+        getAs(999999999L, "/users/999999999/ledger-entries").andExpect(status().isNotFound());
         getJson("/remittances/999999999/ledger-entries")
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.message").value("Remessa não encontrada: id=999999999"));
     }
 
     @Test
-    void nonNumericIdsReturn400() throws Exception {
-        getJson("/users/abc/ledger-entries").andExpect(status().isBadRequest());
+    void nonNumericIdsAreRejected() throws Exception {
+        getJson("/users/abc/ledger-entries").andExpect(status().isForbidden());
         getJson("/remittances/abc/ledger-entries").andExpect(status().isBadRequest());
     }
 }

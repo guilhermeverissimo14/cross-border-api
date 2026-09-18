@@ -34,10 +34,10 @@ public class LedgerService {
     }
 
     @Transactional(readOnly = true)
-    public List<LedgerEntryResponse> getRemittanceLedgerEntries(Long remittanceId) {
-        if (!remittanceRepository.existsById(remittanceId)) {
-            throw new ResourceNotFoundException("Remessa não encontrada: id=" + remittanceId);
-        }
+    public List<LedgerEntryResponse> getRemittanceLedgerEntries(Long remittanceId, Long requesterId) {
+        remittanceRepository.findById(remittanceId)
+                .filter(remittance -> remittance.involves(requesterId))
+                .orElseThrow(() -> new ResourceNotFoundException("Remessa não encontrada: id=" + remittanceId));
 
         return ledgerEntryRepository
                 .findByReferenceTypeAndReferenceIdOrderByIdAsc(LedgerEntry.REFERENCE_TYPE_REMITTANCE, remittanceId)

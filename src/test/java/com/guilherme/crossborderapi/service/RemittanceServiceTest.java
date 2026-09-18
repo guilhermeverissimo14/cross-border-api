@@ -76,34 +76,34 @@ class RemittanceServiceTest {
 
     @Test
     void throwsWhenSenderAndReceiverAreTheSame() {
-        RemittanceCreateRequest request = new RemittanceCreateRequest(1L, 1L, BigDecimal.TEN);
+        RemittanceCreateRequest request = new RemittanceCreateRequest(1L, BigDecimal.TEN);
 
-        assertThatThrownBy(() -> remittanceService.createRemittance(request, KEY))
+        assertThatThrownBy(() -> remittanceService.createRemittance(1L, request, KEY))
                 .isInstanceOf(SelfRemittanceException.class);
     }
 
     @Test
     void throwsWhenSenderDoesNotExist() {
-        RemittanceCreateRequest request = new RemittanceCreateRequest(1L, 2L, BigDecimal.TEN);
+        RemittanceCreateRequest request = new RemittanceCreateRequest(2L, BigDecimal.TEN);
         when(userRepository.findById(1L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> remittanceService.createRemittance(request, KEY))
+        assertThatThrownBy(() -> remittanceService.createRemittance(1L, request, KEY))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 
     @Test
     void throwsWhenReceiverDoesNotExist() {
-        RemittanceCreateRequest request = new RemittanceCreateRequest(1L, 2L, BigDecimal.TEN);
+        RemittanceCreateRequest request = new RemittanceCreateRequest(2L, BigDecimal.TEN);
         when(userRepository.findById(1L)).thenReturn(Optional.of(User.builder().id(1L).build()));
         when(userRepository.findById(2L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> remittanceService.createRemittance(request, KEY))
+        assertThatThrownBy(() -> remittanceService.createRemittance(1L, request, KEY))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 
     @Test
     void throwsWhenSenderHasInsufficientBalance() {
-        RemittanceCreateRequest request = new RemittanceCreateRequest(1L, 2L, new BigDecimal("1000.00"));
+        RemittanceCreateRequest request = new RemittanceCreateRequest(2L, new BigDecimal("1000.00"));
         when(userRepository.findById(1L)).thenReturn(Optional.of(User.builder().id(1L).build()));
         when(userRepository.findById(2L)).thenReturn(Optional.of(User.builder().id(2L).build()));
         when(walletRepository.findByUserIdAndCurrency(1L, Currency.BRL))
@@ -111,13 +111,13 @@ class RemittanceServiceTest {
         when(walletRepository.findByUserIdAndCurrency(2L, Currency.USD))
                 .thenReturn(Optional.of(Wallet.builder().balance(BigDecimal.ZERO).build()));
 
-        assertThatThrownBy(() -> remittanceService.createRemittance(request, KEY))
+        assertThatThrownBy(() -> remittanceService.createRemittance(1L, request, KEY))
                 .isInstanceOf(InsufficientBalanceException.class);
     }
 
     @Test
     void throwsWhenDailyLimitExceeded() {
-        RemittanceCreateRequest request = new RemittanceCreateRequest(1L, 2L, new BigDecimal("1000.00"));
+        RemittanceCreateRequest request = new RemittanceCreateRequest(2L, new BigDecimal("1000.00"));
         User sender = User.builder().id(1L).userType(UserType.PF).build();
         User receiver = User.builder().id(2L).build();
 
@@ -131,13 +131,13 @@ class RemittanceServiceTest {
         when(remittanceRepository.sumAmountBrlBySender(any(), any(LocalDateTime.class), any(LocalDateTime.class)))
                 .thenReturn(new BigDecimal("9500.00")); // já enviou 9500 hoje, +1000 estouraria os 10000
 
-        assertThatThrownBy(() -> remittanceService.createRemittance(request, KEY))
+        assertThatThrownBy(() -> remittanceService.createRemittance(1L, request, KEY))
                 .isInstanceOf(DailyLimitExceededException.class);
     }
 
     @Test
     void createsRemittanceSuccessfully() {
-        RemittanceCreateRequest request = new RemittanceCreateRequest(1L, 2L, new BigDecimal("1000.00"));
+        RemittanceCreateRequest request = new RemittanceCreateRequest(2L, new BigDecimal("1000.00"));
         Wallet senderWallet = Wallet.builder().balance(new BigDecimal("2000.00")).build();
         Wallet receiverWallet = Wallet.builder().balance(BigDecimal.ZERO).build();
         stubValidRemittanceScenario(senderWallet, receiverWallet);
@@ -147,7 +147,7 @@ class RemittanceServiceTest {
             return remittance;
         });
 
-        RemittanceResponse response = remittanceService.createRemittance(request, KEY);
+        RemittanceResponse response = remittanceService.createRemittance(1L, request, KEY);
 
         assertThat(response.amountBrl()).isEqualByComparingTo("1000.00");
         assertThat(response.amountUsd()).isEqualByComparingTo("200.00");
@@ -183,7 +183,7 @@ class RemittanceServiceTest {
                 .thenReturn(Optional.of(previousRemittance()));
 
         RemittanceResponse response = remittanceService.createRemittance(
-                new RemittanceCreateRequest(1L, 2L, new BigDecimal("1000.00")), KEY);
+                1L, new RemittanceCreateRequest(2L, new BigDecimal("1000.00")), KEY);
 
         assertThat(response.id()).isEqualTo(100L);
         assertThat(response.amountBrl()).isEqualByComparingTo("1000.00");
@@ -201,7 +201,7 @@ class RemittanceServiceTest {
                 .thenReturn(Optional.of(previousRemittance()));
 
         RemittanceResponse response = remittanceService.createRemittance(
-                new RemittanceCreateRequest(1L, 2L, new BigDecimal("1000")), KEY); // "1000" == "1000.00"
+                1L, new RemittanceCreateRequest(2L, new BigDecimal("1000")), KEY); // "1000" == "1000.00"
 
         assertThat(response.id()).isEqualTo(100L);
     }
@@ -212,7 +212,7 @@ class RemittanceServiceTest {
                 .thenReturn(Optional.of(previousRemittance()));
 
         assertThatThrownBy(() -> remittanceService.createRemittance(
-                new RemittanceCreateRequest(1L, 2L, new BigDecimal("999.00")), KEY))
+                1L, new RemittanceCreateRequest(2L, new BigDecimal("999.00")), KEY))
                 .isInstanceOf(IdempotencyKeyReuseException.class);
         verify(remittanceRepository, never()).save(any());
     }
@@ -223,7 +223,7 @@ class RemittanceServiceTest {
                 .thenReturn(Optional.of(previousRemittance()));
 
         assertThatThrownBy(() -> remittanceService.createRemittance(
-                new RemittanceCreateRequest(1L, 3L, new BigDecimal("1000.00")), KEY))
+                1L, new RemittanceCreateRequest(3L, new BigDecimal("1000.00")), KEY))
                 .isInstanceOf(IdempotencyKeyReuseException.class);
         verify(remittanceRepository, never()).save(any());
     }
@@ -232,27 +232,27 @@ class RemittanceServiceTest {
     @NullAndEmptySource
     @ValueSource(strings = {" ", "chave com espaço", "abc\r\nFAKE LOG LINE", "a/b", "ação"})
     void throwsWhenIdempotencyKeyHasInvalidFormat(String invalidKey) {
-        RemittanceCreateRequest request = new RemittanceCreateRequest(1L, 2L, BigDecimal.TEN);
+        RemittanceCreateRequest request = new RemittanceCreateRequest(2L, BigDecimal.TEN);
 
-        assertThatThrownBy(() -> remittanceService.createRemittance(request, invalidKey))
+        assertThatThrownBy(() -> remittanceService.createRemittance(1L, request, invalidKey))
                 .isInstanceOf(InvalidIdempotencyKeyException.class);
         verifyNoInteractions(remittanceRepository);
     }
 
     @Test
     void throwsWhenIdempotencyKeyIsLongerThanTheColumn() {
-        RemittanceCreateRequest request = new RemittanceCreateRequest(1L, 2L, BigDecimal.TEN);
+        RemittanceCreateRequest request = new RemittanceCreateRequest(2L, BigDecimal.TEN);
 
-        assertThatThrownBy(() -> remittanceService.createRemittance(request, "a".repeat(65)))
+        assertThatThrownBy(() -> remittanceService.createRemittance(1L, request, "a".repeat(65)))
                 .isInstanceOf(InvalidIdempotencyKeyException.class);
     }
 
     @Test
     void acceptsIdempotencyKeyWithExactly64Characters() {
         // Passa da validação da chave e só então cai na regra de remessa para si mesmo.
-        RemittanceCreateRequest request = new RemittanceCreateRequest(1L, 1L, BigDecimal.TEN);
+        RemittanceCreateRequest request = new RemittanceCreateRequest(1L, BigDecimal.TEN);
 
-        assertThatThrownBy(() -> remittanceService.createRemittance(request, "a".repeat(64)))
+        assertThatThrownBy(() -> remittanceService.createRemittance(1L, request, "a".repeat(64)))
                 .isInstanceOf(SelfRemittanceException.class);
     }
 
@@ -266,7 +266,7 @@ class RemittanceServiceTest {
                 .thenThrow(new DataIntegrityViolationException("unique key violation"));
 
         assertThatThrownBy(() -> remittanceService.createRemittance(
-                new RemittanceCreateRequest(1L, 2L, new BigDecimal("1000.00")), KEY))
+                1L, new RemittanceCreateRequest(2L, new BigDecimal("1000.00")), KEY))
                 .isInstanceOf(IdempotencyKeyInUseException.class);
         verify(ledgerEntryRepository, never()).save(any());
     }
@@ -277,7 +277,7 @@ class RemittanceServiceTest {
     void returnsRemittanceById() {
         when(remittanceRepository.findById(100L)).thenReturn(Optional.of(previousRemittance()));
 
-        RemittanceResponse response = remittanceService.getRemittanceById(100L);
+        RemittanceResponse response = remittanceService.getRemittanceById(100L, 1L);
 
         assertThat(response.id()).isEqualTo(100L);
         assertThat(response.senderId()).isEqualTo(1L);
@@ -287,10 +287,25 @@ class RemittanceServiceTest {
     }
 
     @Test
+    void receiverCanAlsoReadTheRemittance() {
+        when(remittanceRepository.findById(100L)).thenReturn(Optional.of(previousRemittance()));
+
+        assertThat(remittanceService.getRemittanceById(100L, 2L).id()).isEqualTo(100L);
+    }
+
+    @Test
+    void hidesTheRemittanceFromUsersWhoAreNotInvolved() {
+        when(remittanceRepository.findById(100L)).thenReturn(Optional.of(previousRemittance()));
+
+        assertThatThrownBy(() -> remittanceService.getRemittanceById(100L, 3L))
+                .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
     void throwsWhenRemittanceDoesNotExist() {
         when(remittanceRepository.findById(999L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> remittanceService.getRemittanceById(999L))
+        assertThatThrownBy(() -> remittanceService.getRemittanceById(999L, 1L))
                 .isInstanceOf(ResourceNotFoundException.class);
     }
 

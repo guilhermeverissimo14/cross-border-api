@@ -53,24 +53,24 @@ public class RemittanceService {
     private final DailyLimitPolicyProvider dailyLimitPolicyProvider;
 
     @Transactional
-    public RemittanceResponse createRemittance(RemittanceCreateRequest request, String idempotencyKey) {
+    public RemittanceResponse createRemittance(Long senderId, RemittanceCreateRequest request, String idempotencyKey) {
         validateIdempotencyKeyFormat(idempotencyKey);
 
         log.info("Iniciando remessa: senderId={} receiverId={} amountBrl={} idempotencyKey={}",
-                request.senderId(), request.receiverId(), request.amountBrl(), idempotencyKey);
+                senderId, request.receiverId(), request.amountBrl(), idempotencyKey);
 
        //Vericfica se já existe essa key no banco
         Optional<Remittance> previous =
-                remittanceRepository.findBySenderIdAndIdempotencyKey(request.senderId(), idempotencyKey);
+                remittanceRepository.findBySenderIdAndIdempotencyKey(senderId, idempotencyKey);
         if (previous.isPresent()) {
             return replay(previous.get(), request);
         }
 
-        if (request.senderId().equals(request.receiverId())) {
+        if (senderId.equals(request.receiverId())) {
             throw new SelfRemittanceException("Remessa não pode ser enviada para o próprio usuário");
         }
 
-        User sender = findUserOrThrow(request.senderId());
+        User sender = findUserOrThrow(senderId);
         User receiver = findUserOrThrow(request.receiverId());
 
         Wallet senderWallet = findWalletOrThrow(sender.getId(), SOURCE_CURRENCY);
@@ -115,8 +115,10 @@ public class RemittanceService {
     }
 
     @Transactional(readOnly = true)
-    public RemittanceResponse getRemittanceById(Long id) {
+    public RemittanceResponse getRemittanceById(Long id, Long requesterId) {
+        // Quem não participa da remessa recebe 404, igual a uma remessa que não existe
         return remittanceRepository.findById(id)
+                .filter(remittance -> remittance.involves(requesterId))
                 .map(RemittanceResponse::fromEntity)
                 .orElseThrow(() -> new ResourceNotFoundException("Remessa não encontrada: id=" + id));
     }

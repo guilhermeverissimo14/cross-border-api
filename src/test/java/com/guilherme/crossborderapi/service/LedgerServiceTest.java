@@ -9,6 +9,8 @@ import static org.mockito.Mockito.when;
 
 import com.guilherme.crossborderapi.dto.ledger.LedgerEntryResponse;
 import com.guilherme.crossborderapi.entity.LedgerEntry;
+import com.guilherme.crossborderapi.entity.Remittance;
+import com.guilherme.crossborderapi.entity.User;
 import com.guilherme.crossborderapi.enums.Currency;
 import com.guilherme.crossborderapi.enums.LedgerEntryType;
 import com.guilherme.crossborderapi.exception.ResourceNotFoundException;
@@ -17,6 +19,7 @@ import com.guilherme.crossborderapi.repository.RemittanceRepository;
 import com.guilherme.crossborderapi.repository.UserRepository;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -79,12 +82,12 @@ class LedgerServiceTest {
 
     @Test
     void listsTheTwoLegsOfARemittance() {
-        when(remittanceRepository.existsById(7L)).thenReturn(true);
+        when(remittanceRepository.findById(7L)).thenReturn(Optional.of(remittanceBetween(1L, 2L)));
         when(ledgerEntryRepository.findByReferenceTypeAndReferenceIdOrderByIdAsc(LedgerEntry.REFERENCE_TYPE_REMITTANCE, 7L))
                 .thenReturn(List.of(entry(1L, Currency.BRL, LedgerEntryType.DEBIT, "100.0000"),
                         entry(2L, Currency.USD, LedgerEntryType.CREDIT, "19.39")));
 
-        List<LedgerEntryResponse> result = ledgerService.getRemittanceLedgerEntries(7L);
+        List<LedgerEntryResponse> result = ledgerService.getRemittanceLedgerEntries(7L, 2L);
 
         assertThat(result).extracting(LedgerEntryResponse::type)
                 .containsExactly(LedgerEntryType.DEBIT, LedgerEntryType.CREDIT);
@@ -94,11 +97,28 @@ class LedgerServiceTest {
 
     @Test
     void throwsWhenRemittanceDoesNotExist() {
-        when(remittanceRepository.existsById(999L)).thenReturn(false);
+        when(remittanceRepository.findById(999L)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> ledgerService.getRemittanceLedgerEntries(999L))
+        assertThatThrownBy(() -> ledgerService.getRemittanceLedgerEntries(999L, 1L))
                 .isInstanceOf(ResourceNotFoundException.class);
         verifyNoInteractions(ledgerEntryRepository);
+    }
+
+    @Test
+    void hidesTheRemittanceLedgerFromUsersWhoAreNotInvolved() {
+        when(remittanceRepository.findById(7L)).thenReturn(Optional.of(remittanceBetween(1L, 2L)));
+
+        assertThatThrownBy(() -> ledgerService.getRemittanceLedgerEntries(7L, 3L))
+                .isInstanceOf(ResourceNotFoundException.class);
+        verifyNoInteractions(ledgerEntryRepository);
+    }
+
+    private Remittance remittanceBetween(Long senderId, Long receiverId) {
+        return Remittance.builder()
+                .id(7L)
+                .sender(User.builder().id(senderId).build())
+                .receiver(User.builder().id(receiverId).build())
+                .build();
     }
 
     private LedgerEntry entry(Long id, Currency currency, LedgerEntryType type, String amount) {

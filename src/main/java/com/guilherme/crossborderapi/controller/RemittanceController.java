@@ -15,6 +15,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -33,7 +34,7 @@ public class RemittanceController {
 
     @Operation(
             summary = "Criar remessa",
-            description = "Converte o valor em Real para Dólar usando a cotação do dia (API do BCB) e "
+            description = "O remetente é o usuário do token. Converte o valor em Real para Dólar usando a cotação do dia (API do BCB) e "
                     + "transfere o valor convertido para a carteira em Dólar do destinatário. Valida saldo "
                     + "do remetente antes de processar; tudo roda em uma única transação, revertida em "
                     + "caso de qualquer inconsistência.\n\n"
@@ -59,12 +60,15 @@ public class RemittanceController {
                     + "Use uma chave nova para cada remessa e reaproveite-a apenas ao repetir a mesma chamada.",
                     required = true, example = "7f9c2b1e-3d4a-4c8e-9f10-2a6b5d8e1c34")
             @RequestHeader("Idempotency-Key") String idempotencyKey,
-            @Valid @RequestBody RemittanceCreateRequest request) {
-        RemittanceResponse response = remittanceService.createRemittance(request, idempotencyKey);
+            @Valid @RequestBody RemittanceCreateRequest request,
+            Authentication authentication) {
+        RemittanceResponse response = remittanceService.createRemittance(
+                Long.valueOf(authentication.getName()), request, idempotencyKey);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
-    @Operation(summary = "Buscar remessa por id")
+    @Operation(summary = "Buscar remessa por id",
+            description = "Só quem enviou ou recebeu a remessa a enxerga; para os demais, responde 404.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Remessa encontrada",
                     content = @Content(schema = @Schema(implementation = RemittanceResponse.class))),
@@ -73,7 +77,8 @@ public class RemittanceController {
     })
     @GetMapping("/{id}")
     public ResponseEntity<RemittanceResponse> getRemittanceById(
-            @Parameter(description = "Id da remessa", example = "1") @PathVariable Long id) {
-        return ResponseEntity.ok(remittanceService.getRemittanceById(id));
+            @Parameter(description = "Id da remessa", example = "1") @PathVariable Long id,
+            Authentication authentication) {
+        return ResponseEntity.ok(remittanceService.getRemittanceById(id, Long.valueOf(authentication.getName())));
     }
 }

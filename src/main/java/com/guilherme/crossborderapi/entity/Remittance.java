@@ -70,4 +70,8 @@ public class Remittance {
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
+
+    public boolean involves(Long userId) {
+        return sender.getId().equals(userId) || receiver.getId().equals(userId);
+    }
 }

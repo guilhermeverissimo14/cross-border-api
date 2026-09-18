@@ -6,11 +6,7 @@ import jakarta.validation.constraints.Positive;
 import java.math.BigDecimal;
 
 public record RemittanceCreateRequest(
-        @Schema(description = "Id do usuário que envia a remessa", example = "1")
-        @NotNull(message = "senderId é obrigatório")
-        Long senderId,
-
-        @Schema(description = "Id do usuário que recebe a remessa", example = "2")
+        @Schema(description = "Id do usuário que recebe a remessa (o remetente é o usuário do token)", example = "2")
         @NotNull(message = "receiverId é obrigatório")
         Long receiverId,
 

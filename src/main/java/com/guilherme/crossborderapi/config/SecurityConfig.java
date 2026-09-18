@@ -2,6 +2,7 @@ package com.guilherme.crossborderapi.config;
 
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
 import java.nio.charset.StandardCharsets;
+import java.util.function.Supplier;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 import lombok.RequiredArgsConstructor;
@@ -9,10 +10,12 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
+import org.springframework.security.authorization.AuthorizationDecision;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
@@ -21,6 +24,7 @@ import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.intercept.RequestAuthorizationContext;
 
 @Configuration
 @EnableConfigurationProperties(JwtProperties.class)
@@ -39,6 +43,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/exchange-rates/**").permitAll()
                         .requestMatchers("/actuator/health/**", "/v3/api-docs/**",
                                 "/swagger-ui/**", "/swagger-ui.html", "/h2-console/**").permitAll()
+                        // Cada usuário só acessa o que está sob o próprio id (carteiras, extrato, remessas, depósito)
+                        .requestMatchers("/users/{id}/**").access(SecurityConfig::isOwner)
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth -> oauth
                         .jwt(Customizer.withDefaults())
@@ -50,6 +56,11 @@ public class SecurityConfig {
                 // O console do H2 é uma página com frames
                 .headers(headers -> headers.frameOptions(frame -> frame.sameOrigin()));
         return http.build();
+    }
+
+    private static AuthorizationDecision isOwner(Supplier<? extends Authentication> authentication,
+                                                 RequestAuthorizationContext context) {
+        return new AuthorizationDecision(authentication.get().getName().equals(context.getVariables().get("id")));
     }
 
     @Bean

@@ -64,7 +64,7 @@ class RemittanceEndpointsTest extends ApiIntegrationTest {
         deposit(sender, "BRL", "100");
         long id = createRemittance(sender, receiver, "50");
 
-        getJson("/remittances/" + id)
+        getAs(sender, "/remittances/" + id)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(id))
                 .andExpect(jsonPath("$.amountBrl").value(50.0));
@@ -81,7 +81,7 @@ class RemittanceEndpointsTest extends ApiIntegrationTest {
         mockMvc.perform(post("/remittances")
                         .header(HttpHeaders.AUTHORIZATION, bearer())
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"senderId\":1,\"receiverId\":2,\"amountBrl\":10}"))
+                        .content("{\"receiverId\":2,\"amountBrl\":10}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("Header obrigatório ausente: Idempotency-Key"));
     }
@@ -103,7 +103,6 @@ class RemittanceEndpointsTest extends ApiIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"amountBrl\":0}"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.fieldErrors.senderId").exists())
                 .andExpect(jsonPath("$.fieldErrors.receiverId").exists())
                 .andExpect(jsonPath("$.fieldErrors.amountBrl").value("amountBrl deve ser maior que zero"));
 
@@ -125,7 +124,7 @@ class RemittanceEndpointsTest extends ApiIntegrationTest {
 
         assertThat(walletBalance(sender, "BRL")).isEqualByComparingTo("50");
         assertThat(walletBalance(receiver, "USD")).isEqualByComparingTo("0");
-        getJson("/users/" + sender + "/remittances").andExpect(jsonPath("$.length()").value(0));
+        getAs(sender, "/users/" + sender + "/remittances").andExpect(jsonPath("$.length()").value(0));
     }
 
     @Test
@@ -198,8 +197,8 @@ class RemittanceEndpointsTest extends ApiIntegrationTest {
         assertThat(second).isEqualTo(first);
         assertThat(walletBalance(sender, "BRL")).isEqualByComparingTo("400");
         assertThat(walletBalance(receiver, "USD")).isEqualByComparingTo("20");
-        getJson("/users/" + sender + "/remittances").andExpect(jsonPath("$.length()").value(1));
-        getJson("/remittances/" + first + "/ledger-entries").andExpect(jsonPath("$.length()").value(2));
+        getAs(sender, "/users/" + sender + "/remittances").andExpect(jsonPath("$.length()").value(1));
+        getAs(sender, "/remittances/" + first + "/ledger-entries").andExpect(jsonPath("$.length()").value(2));
     }
 
     @Test
@@ -257,7 +256,7 @@ class RemittanceEndpointsTest extends ApiIntegrationTest {
 
         assertThat(walletBalance(sender, "BRL")).isEqualByComparingTo("100");
         assertThat(walletBalance(receiver, "USD")).isEqualByComparingTo("0");
-        getJson("/users/" + sender + "/ledger-entries").andExpect(jsonPath("$.length()").value(0));
+        getAs(sender, "/users/" + sender + "/ledger-entries").andExpect(jsonPath("$.length()").value(0));
     }
 
     @Test

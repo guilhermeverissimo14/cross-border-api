@@ -63,6 +63,8 @@ public class UserController {
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Usuário encontrado",
                     content = @Content(schema = @Schema(implementation = UserResponse.class))),
+            @ApiResponse(responseCode = "403", description = "O id da URL não é o do usuário autenticado",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
             @ApiResponse(responseCode = "404", description = "Usuário não encontrado",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     })
@@ -87,6 +89,8 @@ public class UserController {
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Carteiras do usuário",
                     content = @Content(schema = @Schema(implementation = UserWalletsResponse.class))),
+            @ApiResponse(responseCode = "403", description = "O id da URL não é o do usuário autenticado",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
             @ApiResponse(responseCode = "404", description = "Usuário não encontrado",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     })
@@ -105,6 +109,8 @@ public class UserController {
             @ApiResponse(responseCode = "200", description = "Depósito realizado, retorna os saldos atualizados",
                     content = @Content(schema = @Schema(implementation = UserWalletsResponse.class))),
             @ApiResponse(responseCode = "400", description = "Dados inválidos",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "403", description = "O id da URL não é o do usuário autenticado",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
             @ApiResponse(responseCode = "404", description = "Usuário ou carteira não encontrados",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
@@ -126,6 +132,8 @@ public class UserController {
             @ApiResponse(responseCode = "200", description = "Lista de remessas (pode ser vazia)",
                     content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE)),
             @ApiResponse(responseCode = "400", description = "remittanceId ou id do usuário não numérico",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "403", description = "O id da URL não é o do usuário autenticado",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
             @ApiResponse(responseCode = "404", description = "Usuário não encontrado",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class)))

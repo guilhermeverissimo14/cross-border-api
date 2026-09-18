@@ -15,6 +15,7 @@ import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -40,6 +41,8 @@ public class LedgerController {
                     content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE)),
             @ApiResponse(responseCode = "400", description = "Moeda inválida (use BRL ou USD) ou id não numérico",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "403", description = "O id da URL não é o do usuário autenticado",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
             @ApiResponse(responseCode = "404", description = "Usuário não encontrado",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     })
@@ -55,7 +58,7 @@ public class LedgerController {
             summary = "Lançamentos de uma remessa",
             description = "Os dois lançamentos gerados pela remessa, na ordem em que foram gravados: o DEBIT em "
                     + "BRL da carteira de quem enviou e o CREDIT em USD da carteira de quem recebeu. "
-                    + "Reenviar a remessa com a mesma Idempotency-Key não cria lançamentos novos."
+                    + "Só quem enviou ou recebeu a remessa a enxerga (para os demais, 404). Reenviar a remessa com a mesma Idempotency-Key não cria lançamentos novos."
     )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Lançamentos da remessa",
@@ -67,7 +70,8 @@ public class LedgerController {
     })
     @GetMapping("/remittances/{id}/ledger-entries")
     public ResponseEntity<List<LedgerEntryResponse>> getRemittanceLedgerEntries(
-            @Parameter(description = "Id da remessa", example = "1") @PathVariable Long id) {
-        return ResponseEntity.ok(ledgerService.getRemittanceLedgerEntries(id));
+            @Parameter(description = "Id da remessa", example = "1") @PathVariable Long id,
+            Authentication authentication) {
+        return ResponseEntity.ok(ledgerService.getRemittanceLedgerEntries(id, Long.valueOf(authentication.getName())));
     }
 }

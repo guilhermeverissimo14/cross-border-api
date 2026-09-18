@@ -26,7 +26,7 @@ class UserEndpointsTest extends ApiIntegrationTest {
                 .andExpect(jsonPath("$.password").doesNotExist());
 
         long id = createUser("PJ");
-        getJson("/users/" + id + "/wallets")
+        getAs(id, "/users/" + id + "/wallets")
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.userId").value(id))
                 .andExpect(jsonPath("$.balances", hasSize(2)))
@@ -84,7 +84,7 @@ class UserEndpointsTest extends ApiIntegrationTest {
     void getUserByIdReturnsUser() throws Exception {
         long id = createUser("PF");
 
-        getJson("/users/" + id)
+        getAs(id, "/users/" + id)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(id))
                 .andExpect(jsonPath("$.userType").value("PF"))
@@ -93,17 +93,17 @@ class UserEndpointsTest extends ApiIntegrationTest {
 
     @Test
     void getUserByIdReturns404WhenNotFound() throws Exception {
-        getJson("/users/999999999")
+        getAs(999999999L, "/users/999999999")
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.status").value(404))
                 .andExpect(jsonPath("$.message").value("Usuário não encontrado: id=999999999"));
     }
 
     @Test
-    void getUserByIdWithNonNumericIdReturns400() throws Exception {
+    void getUserByIdWithNonNumericIdIsForbidden() throws Exception {
         getJson("/users/abc")
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("Valor inválido para o parâmetro 'id'"));
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value("Acesso negado"));
     }
 
     @Test
@@ -120,20 +120,20 @@ class UserEndpointsTest extends ApiIntegrationTest {
 
     @Test
     void getWalletsOfUnknownUserReturns404() throws Exception {
-        getJson("/users/999999999/wallets").andExpect(status().isNotFound());
+        getAs(999999999L, "/users/999999999/wallets").andExpect(status().isNotFound());
     }
 
     @Test
     void depositCreditsTheRequestedCurrencyOnly() throws Exception {
         long id = createUser("PF");
 
-        postJson("/users/" + id + "/wallets/deposit", "{\"currency\":\"BRL\",\"amount\":150.50}")
+        postAs(id, "/users/" + id + "/wallets/deposit", "{\"currency\":\"BRL\",\"amount\":150.50}")
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.userId").value(id))
                 .andExpect(jsonPath("$.balances[?(@.currency=='BRL')].balance").value(150.5))
                 .andExpect(jsonPath("$.balances[?(@.currency=='USD')].balance").value(0.0));
 
-        postJson("/users/" + id + "/wallets/deposit", "{\"currency\":\"USD\",\"amount\":10}")
+        postAs(id, "/users/" + id + "/wallets/deposit", "{\"currency\":\"USD\",\"amount\":10}")
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.balances[?(@.currency=='USD')].balance").value(10.0));
     }
@@ -145,7 +145,7 @@ class UserEndpointsTest extends ApiIntegrationTest {
         deposit(id, "BRL", "100");
         deposit(id, "BRL", "25.25");
 
-        getJson("/users/" + id + "/wallets")
+        getAs(id, "/users/" + id + "/wallets")
                 .andExpect(jsonPath("$.balances[?(@.currency=='BRL')].balance").value(125.25));
     }
 
@@ -153,22 +153,22 @@ class UserEndpointsTest extends ApiIntegrationTest {
     void depositWithInvalidBodyReturns400() throws Exception {
         long id = createUser("PF");
 
-        postJson("/users/" + id + "/wallets/deposit", "{\"currency\":\"BRL\",\"amount\":-5}")
+        postAs(id, "/users/" + id + "/wallets/deposit", "{\"currency\":\"BRL\",\"amount\":-5}")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.fieldErrors.amount").exists());
 
-        postJson("/users/" + id + "/wallets/deposit", "{\"amount\":5}")
+        postAs(id, "/users/" + id + "/wallets/deposit", "{\"amount\":5}")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.fieldErrors.currency").exists());
 
-        postJson("/users/" + id + "/wallets/deposit", "{\"currency\":\"EUR\",\"amount\":5}")
+        postAs(id, "/users/" + id + "/wallets/deposit", "{\"currency\":\"EUR\",\"amount\":5}")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message", containsString("currency")));
     }
 
     @Test
     void depositForUnknownUserReturns404() throws Exception {
-        postJson("/users/999999999/wallets/deposit", "{\"currency\":\"BRL\",\"amount\":5}")
+        postAs(999999999L, "/users/999999999/wallets/deposit", "{\"currency\":\"BRL\",\"amount\":5}")
                 .andExpect(status().isNotFound());
     }
 
@@ -176,7 +176,7 @@ class UserEndpointsTest extends ApiIntegrationTest {
     void userRemittancesStartEmpty() throws Exception {
         long id = createUser("PF");
 
-        getJson("/users/" + id + "/remittances")
+        getAs(id, "/users/" + id + "/remittances")
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(0)));
     }
@@ -189,29 +189,29 @@ class UserEndpointsTest extends ApiIntegrationTest {
         long first = createRemittance(sender, receiver, "100");
         long second = createRemittance(sender, receiver, "200");
 
-        getJson("/users/" + sender + "/remittances")
+        getAs(sender, "/users/" + sender + "/remittances")
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(2)))
                 .andExpect(jsonPath("$[0].id").value(second))
                 .andExpect(jsonPath("$[1].id").value(first));
 
-        getJson("/users/" + sender + "/remittances?remittanceId=" + first)
+        getAs(sender, "/users/" + sender + "/remittances?remittanceId=" + first)
                 .andExpect(jsonPath("$", hasSize(1)))
                 .andExpect(jsonPath("$[0].id").value(first));
 
-        getJson("/users/" + receiver + "/remittances")
+        getAs(receiver, "/users/" + receiver + "/remittances")
                 .andExpect(jsonPath("$", hasSize(0)));
 
-        getJson("/users/" + receiver + "/remittances?remittanceId=" + first)
+        getAs(receiver, "/users/" + receiver + "/remittances?remittanceId=" + first)
                 .andExpect(jsonPath("$", hasSize(0)));
     }
 
     @Test
     void userRemittancesReturn404ForUnknownUserAnd400ForBadFilter() throws Exception {
-        getJson("/users/999999999/remittances").andExpect(status().isNotFound());
+        getAs(999999999L, "/users/999999999/remittances").andExpect(status().isNotFound());
 
         long id = createUser("PF");
-        getJson("/users/" + id + "/remittances?remittanceId=abc")
+        getAs(id, "/users/" + id + "/remittances?remittanceId=abc")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("Valor inválido para o parâmetro 'remittanceId'"));
     }
