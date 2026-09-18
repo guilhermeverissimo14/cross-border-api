@@ -130,7 +130,6 @@ Erros seguem sempre o mesmo formato (`timestamp`, `status`, `error`, `message`, 
 - **Depósito é auxiliar de teste** e não gera lançamento no ledger; por isso o extrato de quem depositou não fecha com o saldo.
 - **Sem paginação** no extrato; **chaves de idempotência não expiram** (o padrão de mercado é uns 24 h, em tabela própria).
 - **Dias sem cotação não são guardados em cache**: em fins de semana, cada consulta chama o BCB 2 vezes antes de achar a sexta no cache.
-- `GET /exchange-rates/{data}` com datas anteriores a jul/1994 devolve valores na moeda da época (o BCB tem histórico antigo).
 
 <details>
 <summary><b>Estrutura do projeto</b></summary>
