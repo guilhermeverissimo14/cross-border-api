@@ -67,6 +67,9 @@ public class Remittance {
     @Column(name = "details", columnDefinition = "TEXT")
     private String details;
 
+    @Column(name = "idempotency_key", nullable = false, length = 64)
+    private String idempotencyKey;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

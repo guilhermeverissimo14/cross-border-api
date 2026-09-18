@@ -3,7 +3,10 @@ package com.guilherme.crossborderapi.exception.handler;
 import com.guilherme.crossborderapi.exception.DailyLimitExceededException;
 import com.guilherme.crossborderapi.exception.DuplicateResourceException;
 import com.guilherme.crossborderapi.exception.ExchangeRateUnavailableException;
+import com.guilherme.crossborderapi.exception.IdempotencyKeyInUseException;
+import com.guilherme.crossborderapi.exception.IdempotencyKeyReuseException;
 import com.guilherme.crossborderapi.exception.InsufficientBalanceException;
+import com.guilherme.crossborderapi.exception.InvalidIdempotencyKeyException;
 import com.guilherme.crossborderapi.exception.ResourceNotFoundException;
 import com.guilherme.crossborderapi.exception.SelfRemittanceException;
 import tools.jackson.databind.exc.InvalidFormatException;
@@ -15,6 +18,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -41,12 +45,38 @@ public class GlobalExceptionHandler {
             ExchangeRateUnavailableException.class,
             InsufficientBalanceException.class,
             SelfRemittanceException.class,
-            DailyLimitExceededException.class
+            DailyLimitExceededException.class,
+            IdempotencyKeyReuseException.class
     })
     public ResponseEntity<ErrorResponse> handleUnprocessable(RuntimeException ex) {
         log.warn("Regra de negócio violada: {}", ex.getMessage());
         ErrorResponse body = ErrorResponse.of(HttpStatus.UNPROCESSABLE_CONTENT, ex.getMessage());
         return ResponseEntity.status(HttpStatus.UNPROCESSABLE_CONTENT).body(body);
+    }
+
+    // Outra requisição com a mesma Idempotency-Key gravou primeiro: o cliente repete e recebe o resultado guardado.
+    @ExceptionHandler(IdempotencyKeyInUseException.class)
+    public ResponseEntity<ErrorResponse> handleIdempotencyKeyInUse(IdempotencyKeyInUseException ex) {
+        log.warn("Requisição concorrente com a mesma Idempotency-Key");
+        ErrorResponse body = ErrorResponse.of(HttpStatus.CONFLICT, ex.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
+    }
+
+    @ExceptionHandler(InvalidIdempotencyKeyException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidIdempotencyKey(InvalidIdempotencyKeyException ex) {
+        // A chave inválida não vai pro log de propósito: é texto livre do cliente.
+        log.warn("Idempotency-Key com formato inválido");
+        ErrorResponse body = ErrorResponse.of(HttpStatus.BAD_REQUEST, ex.getMessage());
+        return ResponseEntity.badRequest().body(body);
+    }
+
+    // Header obrigatório ausente (hoje só o Idempotency-Key de POST /remittances).
+    @ExceptionHandler(MissingRequestHeaderException.class)
+    public ResponseEntity<ErrorResponse> handleMissingHeader(MissingRequestHeaderException ex) {
+        log.warn("Header obrigatório ausente: {}", ex.getHeaderName());
+        ErrorResponse body = ErrorResponse.of(HttpStatus.BAD_REQUEST,
+                "Header obrigatório ausente: " + ex.getHeaderName());
+        return ResponseEntity.badRequest().body(body);
     }
 
     // Duas transações concorrentes tentaram atualizar a mesma linha(Wallet) ao mesmo tempo.

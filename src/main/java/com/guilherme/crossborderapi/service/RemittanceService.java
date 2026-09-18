@@ -11,7 +11,10 @@ import com.guilherme.crossborderapi.enums.LedgerEntryType;
 import com.guilherme.crossborderapi.enums.RemittanceDirection;
 import com.guilherme.crossborderapi.enums.RemittanceStatus;
 import com.guilherme.crossborderapi.exception.DailyLimitExceededException;
+import com.guilherme.crossborderapi.exception.IdempotencyKeyInUseException;
+import com.guilherme.crossborderapi.exception.IdempotencyKeyReuseException;
 import com.guilherme.crossborderapi.exception.InsufficientBalanceException;
+import com.guilherme.crossborderapi.exception.InvalidIdempotencyKeyException;
 import com.guilherme.crossborderapi.exception.ResourceNotFoundException;
 import com.guilherme.crossborderapi.exception.SelfRemittanceException;
 import com.guilherme.crossborderapi.repository.LedgerEntryRepository;
@@ -22,8 +25,11 @@ import com.guilherme.crossborderapi.service.dailylimit.DailyLimitPolicyProvider;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.Optional;
+import java.util.regex.Pattern;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,6 +43,8 @@ public class RemittanceService {
     private static final int MONEY_SCALE = 2;
     private static final String REMITTANCE_REFERENCE_TYPE = "REMITTANCE";
 
+    private static final Pattern IDEMPOTENCY_KEY_FORMAT = Pattern.compile("^[A-Za-z0-9._-]{1,64}$");
+
     private final UserRepository userRepository;
     private final WalletRepository walletRepository;
     private final RemittanceRepository remittanceRepository;
@@ -45,9 +53,18 @@ public class RemittanceService {
     private final DailyLimitPolicyProvider dailyLimitPolicyProvider;
 
     @Transactional
-    public RemittanceResponse createRemittance(RemittanceCreateRequest request) {
-        log.info("Iniciando remessa: senderId={} receiverId={} amountBrl={}",
-                request.senderId(), request.receiverId(), request.amountBrl());
+    public RemittanceResponse createRemittance(RemittanceCreateRequest request, String idempotencyKey) {
+        validateIdempotencyKeyFormat(idempotencyKey);
+
+        log.info("Iniciando remessa: senderId={} receiverId={} amountBrl={} idempotencyKey={}",
+                request.senderId(), request.receiverId(), request.amountBrl(), idempotencyKey);
+
+       //Vericfica se já existe essa key no banco
+        Optional<Remittance> previous =
+                remittanceRepository.findBySenderIdAndIdempotencyKey(request.senderId(), idempotencyKey);
+        if (previous.isPresent()) {
+            return replay(previous.get(), request);
+        }
 
         if (request.senderId().equals(request.receiverId())) {
             throw new SelfRemittanceException("Remessa não pode ser enviada para o próprio usuário");
@@ -84,8 +101,9 @@ public class RemittanceService {
                 .exchangeRate(exchangeRate)
                 .direction(RemittanceDirection.BRL_TO_USD)
                 .status(RemittanceStatus.COMPLETED)
+                .idempotencyKey(idempotencyKey)
                 .build();
-        Remittance savedRemittance = remittanceRepository.save(remittance);
+        Remittance savedRemittance = saveRemittance(remittance);
 
         registerLedgerEntries(senderWallet, receiverWallet, amountBrl, amountUsd, savedRemittance.getId());
 
@@ -94,6 +112,37 @@ public class RemittanceService {
                 savedRemittance.getId(), amountBrl, amountUsd, exchangeRate);
 
         return RemittanceResponse.fromEntity(savedRemittance);
+    }
+
+    private void validateIdempotencyKeyFormat(String idempotencyKey) {
+        if (idempotencyKey == null || !IDEMPOTENCY_KEY_FORMAT.matcher(idempotencyKey).matches()) {
+            throw new InvalidIdempotencyKeyException(
+                    "Idempotency-Key inválida: use de 1 a 64 caracteres entre letras, números, '.', '_' e '-'");
+        }
+    }
+
+    private RemittanceResponse replay(Remittance previous, RemittanceCreateRequest request) {
+        BigDecimal requestedAmount = request.amountBrl().setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+        boolean sameRequest = previous.getReceiver().getId().equals(request.receiverId())
+                && previous.getAmountBrl().compareTo(requestedAmount) == 0;
+
+        if (!sameRequest) {
+            throw new IdempotencyKeyReuseException(
+                    "Idempotency-Key já foi usada em uma remessa com dados diferentes");
+        }
+
+        log.info("Idempotency-Key repetida: devolvendo a remessa {} já registrada, sem reprocessar",
+                previous.getId());
+        return RemittanceResponse.fromEntity(previous);
+    }
+
+    private Remittance saveRemittance(Remittance remittance) {
+        try {
+            return remittanceRepository.save(remittance);
+        } catch (DataIntegrityViolationException e) {
+            throw new IdempotencyKeyInUseException(
+                    "Já existe uma remessa sendo processada com essa Idempotency-Key. Tente novamente em instantes.");
+        }
     }
 
     private void validateDailyLimit(User sender, BigDecimal amountBrl) {

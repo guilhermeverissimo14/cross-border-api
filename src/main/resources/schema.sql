@@ -57,7 +57,9 @@ CREATE TABLE remittances (
     direction      VARCHAR(20)    NOT NULL,
     status         VARCHAR(20)    NOT NULL,
     details        TEXT,
+    idempotency_key VARCHAR(64)   NOT NULL,
     created_at     TIMESTAMP      NOT NULL,
     CONSTRAINT fk_remittances_sender   FOREIGN KEY (sender_id)   REFERENCES users (id),
-    CONSTRAINT fk_remittances_receiver FOREIGN KEY (receiver_id) REFERENCES users (id)
+    CONSTRAINT fk_remittances_receiver FOREIGN KEY (receiver_id) REFERENCES users (id),
+    CONSTRAINT uk_remittances_sender_idempotency_key UNIQUE (sender_id, idempotency_key)
 );
