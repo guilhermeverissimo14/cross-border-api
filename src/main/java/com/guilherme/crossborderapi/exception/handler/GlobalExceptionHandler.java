@@ -2,10 +2,12 @@ package com.guilherme.crossborderapi.exception.handler;
 
 import com.guilherme.crossborderapi.exception.DuplicateResourceException;
 import com.guilherme.crossborderapi.exception.ResourceNotFoundException;
+import tools.jackson.databind.exc.InvalidFormatException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -25,7 +27,24 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(body);
     }
 
-    //Se acotecer algum erro de validação, o Spring lança uma exceção MethodArgumentNotValidException.
+    // Erro de desserialização do JSON (ex: valor de enum inválido) acontece antes do @Valid rodar,
+    // então cai aqui e não em MethodArgumentNotValidException.
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ErrorResponse> handleMessageNotReadable(HttpMessageNotReadableException ex) {
+        String message = "Corpo da requisição inválido";
+        Throwable cause = ex.getCause();
+        while (cause != null && !(cause instanceof InvalidFormatException)) {
+            cause = cause.getCause();
+        }
+        if (cause instanceof InvalidFormatException invalidFormatException && !invalidFormatException.getPath().isEmpty()) {
+            String field = invalidFormatException.getPath().get(0).getPropertyName();
+            message = "Valor inválido para o campo '" + field + "': " + invalidFormatException.getValue();
+        }
+        ErrorResponse body = ErrorResponse.of(HttpStatus.BAD_REQUEST, message);
+        return ResponseEntity.badRequest().body(body);
+    }
+
+    //Erro de validação do @Valid, caso algum campo obrigatório esteja ausente ou mal formado.
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ErrorResponse> handleValidation(MethodArgumentNotValidException ex) {
         Map<String, String> fieldErrors = new LinkedHashMap<>();
