@@ -59,7 +59,7 @@ public class RemittanceService {
         log.info("Iniciando remessa: senderId={} receiverId={} amountBrl={} idempotencyKey={}",
                 senderId, request.receiverId(), request.amountBrl(), idempotencyKey);
 
-       //Vericfica se já existe essa key no banco
+       //Verifica se já existe essa key no banco
         Optional<Remittance> previous =
                 remittanceRepository.findBySenderIdAndIdempotencyKey(senderId, idempotencyKey);
         if (previous.isPresent()) {
@@ -86,7 +86,7 @@ public class RemittanceService {
         validateDailyLimit(sender, amountBrl);
 
         BigDecimal exchangeRate = exchangeRateService.getBuyRate(LocalDate.now());
-        BigDecimal amountUsd = amountBrl.divide(exchangeRate, MONEY_SCALE, RoundingMode.HALF_UP); //mesma coisa de amountBrl / exchangeRate
+        BigDecimal amountUsd = amountBrl.divide(exchangeRate, MONEY_SCALE, RoundingMode.HALF_UP); //amountBrl / exchangeRate
 
         senderWallet.setBalance(senderWallet.getBalance().subtract(amountBrl));
         receiverWallet.setBalance(receiverWallet.getBalance().add(amountUsd));

@@ -3,12 +3,19 @@ package com.guilherme.crossborderapi.integration;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.guilherme.crossborderapi.entity.LedgerEntry;
+import com.guilherme.crossborderapi.enums.LedgerEntryType;
 import com.guilherme.crossborderapi.repository.ExchangeRateRepository;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -257,6 +264,62 @@ class RemittanceEndpointsTest extends ApiIntegrationTest {
         assertThat(walletBalance(sender, "BRL")).isEqualByComparingTo("100");
         assertThat(walletBalance(receiver, "USD")).isEqualByComparingTo("0");
         getAs(sender, "/users/" + sender + "/ledger-entries").andExpect(jsonPath("$.length()").value(0));
+    }
+
+    @Test
+    void failureAfterDebitAndCreditRollsBackEverything() throws Exception {
+        long sender = createUser("PF");
+        long receiver = createUser("PF");
+        deposit(sender, "BRL", "100");
+        // O lançamento de débito é gravado de verdade; falha no de crédito, a última escrita da remessa
+        doThrow(new IllegalStateException("falha simulada")).when(ledgerEntryRepository)
+                .save(argThat((LedgerEntry entry) -> entry.getType() == LedgerEntryType.CREDIT));
+
+        postRemittance("rollback-ledger", sender, receiver, "100")
+                .andExpect(status().isInternalServerError());
+
+        // Prova de que a falha veio depois das escritas: remessa e débito chegaram a ser gravados
+        verify(remittanceRepository).save(any());
+        verify(ledgerEntryRepository, times(2)).save(any());
+        assertNothingPersistedAndMoneyBack(sender, receiver, "100");
+    }
+
+    @Test
+    void failureWhileSavingTheRemittanceRollsBackTheWalletUpdates() throws Exception {
+        long sender = createUser("PF");
+        long receiver = createUser("PF");
+        deposit(sender, "BRL", "100");
+        doThrow(new IllegalStateException("falha simulada")).when(remittanceRepository).save(any());
+
+        postRemittance("rollback-remittance", sender, receiver, "100")
+                .andExpect(status().isInternalServerError());
+
+        verify(remittanceRepository).save(any());
+        assertNothingPersistedAndMoneyBack(sender, receiver, "100");
+    }
+
+    @Test
+    void afterARolledBackFailureTheSameKeyCanBeRetriedAndMovesMoneyOnce() throws Exception {
+        long sender = createUser("PF");
+        long receiver = createUser("PF");
+        deposit(sender, "BRL", "100");
+        doThrow(new IllegalStateException("falha simulada")).when(ledgerEntryRepository).save(any());
+        postRemittance("rollback-retry", sender, receiver, "100").andExpect(status().isInternalServerError());
+
+        reset(ledgerEntryRepository);
+        postRemittance("rollback-retry", sender, receiver, "100").andExpect(status().isCreated());
+
+        assertThat(walletBalance(sender, "BRL")).isEqualByComparingTo("0");
+        assertThat(walletBalance(receiver, "USD")).isEqualByComparingTo("20");
+        getAs(sender, "/users/" + sender + "/remittances").andExpect(jsonPath("$.length()").value(1));
+    }
+
+    private void assertNothingPersistedAndMoneyBack(long sender, long receiver, String senderBalance) throws Exception {
+        assertThat(walletBalance(sender, "BRL")).isEqualByComparingTo(senderBalance);
+        assertThat(walletBalance(receiver, "USD")).isEqualByComparingTo("0");
+        getAs(sender, "/users/" + sender + "/remittances").andExpect(jsonPath("$.length()").value(0));
+        getAs(sender, "/users/" + sender + "/ledger-entries").andExpect(jsonPath("$.length()").value(0));
+        getAs(receiver, "/users/" + receiver + "/ledger-entries").andExpect(jsonPath("$.length()").value(0));
     }
 
     @Test

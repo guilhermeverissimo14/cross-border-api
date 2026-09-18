@@ -55,7 +55,7 @@ Além dos testes, gera o relatório de cobertura (JaCoCo) em `target/site/jacoco
 
 Nenhum teste chama o BCB de verdade. O que está coberto:
 
-- **Endpoints (integração ponta a ponta)**: os 12 endpoints via MockMvc, passando por controller, service e H2 real, com só o BCB simulado. Cobre sucesso e erros (`400`, `404`, `409`, `422`), limites PF/PJ, idempotência, rollback e fallback de cotação.
+- **Endpoints (integração ponta a ponta)**: os 12 endpoints via MockMvc, passando por controller, service e H2 real, com só o BCB simulado. Cobre sucesso e erros (`400`, `404`, `409`, `422`), limites PF/PJ, idempotência e fallback de cotação. O **rollback** é testado forçando uma falha *depois* do débito e do crédito (ao gravar a remessa e o lançamento): o saldo volta, nada fica gravado e a mesma chave pode ser reenviada.
 - **Regras de negócio (Mockito)**: cadastro e depósito, remessa (validações, conversão, débito/crédito, ledger, limite diário, idempotência), cotação (cache, fallback, erros) e extrato.
 - **Strategy do limite diário**: resolução da política de PF e de PJ.
 - **Cliente do BCB**: resposta normal, dia sem cotação e erro 500, simulados com `MockRestServiceServer`. Um teste separado prova que a chamada **estoura o timeout** contra um servidor que nunca responde.

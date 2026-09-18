@@ -7,6 +7,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.guilherme.crossborderapi.client.BcbExchangeRateClient;
+import com.guilherme.crossborderapi.repository.LedgerEntryRepository;
+import com.guilherme.crossborderapi.repository.RemittanceRepository;
 import com.jayway.jsonpath.JsonPath;
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -25,6 +27,7 @@ import org.springframework.security.oauth2.jwt.JwtClaimsSet;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 
@@ -45,6 +48,13 @@ public abstract class ApiIntegrationTest {
 
     @MockitoBean
     protected BcbExchangeRateClient bcbClient;
+
+    // Spies para forçar falhas no meio da remessa (os repositórios continuam reais)
+    @MockitoSpyBean
+    protected LedgerEntryRepository ledgerEntryRepository;
+
+    @MockitoSpyBean
+    protected RemittanceRepository remittanceRepository;
 
     @BeforeEach
     void stubBcbWithDefaultRate() {
