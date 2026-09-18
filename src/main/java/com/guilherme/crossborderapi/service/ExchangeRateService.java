@@ -8,9 +8,11 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ExchangeRateService {
@@ -31,6 +33,8 @@ public class ExchangeRateService {
             Optional<BigDecimal> cached = exchangeRateRepository.findByQuoteDate(candidateDate) //verifica tem salva no banco na data atual
                     .map(ExchangeRate::getBuyRate);
             if (cached.isPresent()) {
+                log.debug("Cotação de {} encontrada em cache: {}", candidateDate, cached.get());
+                logIfFallback(date, candidateDate);
                 return cached.get();
             }
 
@@ -38,6 +42,8 @@ public class ExchangeRateService {
             Optional<BigDecimal> fetched = bcbExchangeRateClient.fetchBuyRate(candidateDate);
             if (fetched.isPresent()) {
                 cacheQuote(candidateDate, fetched.get());
+                log.info("Cotação de {} obtida do BCB e salva em cache: {}", candidateDate, fetched.get());
+                logIfFallback(date, candidateDate);
                 return fetched.get();
             }
 
@@ -46,6 +52,12 @@ public class ExchangeRateService {
 
         throw new ExchangeRateUnavailableException(
                 "Nenhuma cotação encontrada nos últimos " + MAX_LOOKBACK_DAYS + " dias a partir de " + date);
+    }
+
+    private void logIfFallback(LocalDate requestedDate, LocalDate usedDate) {
+        if (!requestedDate.equals(usedDate)) {
+            log.warn("Sem cotação para {}; usando a cotação de {}", requestedDate, usedDate);
+        }
     }
 
     private void cacheQuote(LocalDate date, BigDecimal buyRate) {

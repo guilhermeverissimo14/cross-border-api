@@ -23,9 +23,11 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class RemittanceService {
@@ -44,6 +46,9 @@ public class RemittanceService {
 
     @Transactional
     public RemittanceResponse createRemittance(RemittanceCreateRequest request) {
+        log.info("Iniciando remessa: senderId={} receiverId={} amountBrl={}",
+                request.senderId(), request.receiverId(), request.amountBrl());
+
         if (request.senderId().equals(request.receiverId())) {
             throw new SelfRemittanceException("Remessa não pode ser enviada para o próprio usuário");
         }
@@ -83,6 +88,10 @@ public class RemittanceService {
         Remittance savedRemittance = remittanceRepository.save(remittance);
 
         registerLedgerEntries(senderWallet, receiverWallet, amountBrl, amountUsd, savedRemittance.getId());
+
+        // "registrada" e não "concluída": o commit da transação só acontece depois que o método retorna.
+        log.info("Remessa registrada: remittanceId={} amountBrl={} amountUsd={} cotacao={}",
+                savedRemittance.getId(), amountBrl, amountUsd, exchangeRate);
 
         return RemittanceResponse.fromEntity(savedRemittance);
     }

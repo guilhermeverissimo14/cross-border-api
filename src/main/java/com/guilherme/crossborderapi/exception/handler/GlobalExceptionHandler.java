@@ -9,6 +9,7 @@ import com.guilherme.crossborderapi.exception.SelfRemittanceException;
 import tools.jackson.databind.exc.InvalidFormatException;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -17,17 +18,20 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+@Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(DuplicateResourceException.class)
     public ResponseEntity<ErrorResponse> handleDuplicateResource(DuplicateResourceException ex) {
+        log.warn("Recurso duplicado: e-mail ou documento já cadastrado");
         ErrorResponse body = ErrorResponse.of(HttpStatus.CONFLICT, ex.getMessage());
         return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
     }
 
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleResourceNotFound(ResourceNotFoundException ex) {
+        log.warn("Recurso não encontrado: {}", ex.getMessage());
         ErrorResponse body = ErrorResponse.of(HttpStatus.NOT_FOUND, ex.getMessage());
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(body);
     }
@@ -40,6 +44,7 @@ public class GlobalExceptionHandler {
             DailyLimitExceededException.class
     })
     public ResponseEntity<ErrorResponse> handleUnprocessable(RuntimeException ex) {
+        log.warn("Regra de negócio violada: {}", ex.getMessage());
         ErrorResponse body = ErrorResponse.of(HttpStatus.UNPROCESSABLE_CONTENT, ex.getMessage());
         return ResponseEntity.status(HttpStatus.UNPROCESSABLE_CONTENT).body(body);
     }
@@ -47,6 +52,7 @@ public class GlobalExceptionHandler {
     // Duas transações concorrentes tentaram atualizar a mesma linha(Wallet) ao mesmo tempo.
     @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
     public ResponseEntity<ErrorResponse> handleOptimisticLockingFailure(ObjectOptimisticLockingFailureException ex) {
+        log.warn("Conflito de concorrência (lock otimista): {}", ex.getMessage());
         ErrorResponse body = ErrorResponse.of(HttpStatus.CONFLICT,
                 "Esse recurso foi modificado por outra operação concorrente. Tente novamente.");
         return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
@@ -56,6 +62,7 @@ public class GlobalExceptionHandler {
     // então cai aqui e não em MethodArgumentNotValidException.
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ErrorResponse> handleMessageNotReadable(HttpMessageNotReadableException ex) {
+        log.warn("Corpo da requisição inválido ou ilegível");
         String message = "Corpo da requisição inválido";
         Throwable cause = ex.getCause();
         while (cause != null && !(cause instanceof InvalidFormatException)) {
@@ -76,12 +83,14 @@ public class GlobalExceptionHandler {
         for (var error : ex.getBindingResult().getFieldErrors()) {
             fieldErrors.put(error.getField(), error.getDefaultMessage());
         }
+        log.warn("Erro de validação nos campos: {}", fieldErrors.keySet());
         ErrorResponse body = ErrorResponse.of(HttpStatus.BAD_REQUEST, "Erro de validação", fieldErrors);
         return ResponseEntity.badRequest().body(body);
     }
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleGeneric(Exception ex) {
+        log.error("Erro inesperado ao processar a requisição", ex);
         ErrorResponse body = ErrorResponse.of(HttpStatus.INTERNAL_SERVER_ERROR, "Erro interno no servidor");
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(body);
     }

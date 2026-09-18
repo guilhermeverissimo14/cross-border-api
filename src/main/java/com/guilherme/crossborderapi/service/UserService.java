@@ -15,10 +15,12 @@ import com.guilherme.crossborderapi.repository.WalletRepository;
 import java.math.BigDecimal;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class UserService {
@@ -48,6 +50,8 @@ public class UserService {
 
         createWallet(savedUser, Currency.BRL);
         createWallet(savedUser, Currency.USD);
+
+        log.info("Usuário criado: id={} tipo={}", savedUser.getId(), savedUser.getUserType());
 
         return UserResponse.fromEntity(savedUser);
     }
@@ -93,6 +97,8 @@ public class UserService {
 
         wallet.setBalance(wallet.getBalance().add(request.amount()));
         walletRepository.save(wallet);
+
+        log.info("Depósito realizado: userId={} moeda={} valor={}", id, request.currency(), request.amount());
 
         return getUserWallets(id);
     }
