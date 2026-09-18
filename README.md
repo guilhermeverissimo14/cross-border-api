@@ -134,6 +134,12 @@ Erros seguem sempre o mesmo formato (`timestamp`, `status`, `error`, `message`, 
 
 **Kubernetes.** Manifestos em `k8s/` (Kustomize): `Deployment`, `Service` e `ConfigMap`.
 
+O segredo de assinatura do JWT vem de um `Secret` que **não é versionado**. Crie-o antes do deploy; sem ele o pod não sobe (`CreateContainerConfigError`), em vez de rodar com um segredo conhecido:
+
+```bash
+kubectl create secret generic cross-border-api-jwt --from-literal=secret="$(openssl rand -base64 48)"
+```
+
 ```bash
 docker build -t cross-border-api:local .
 kubectl apply -k k8s/
@@ -147,11 +153,12 @@ Se o cluster não enxergar a imagem local: no kind, `kind load docker-image cros
 - **Probes** de startup, liveness e readiness em `/actuator/health/*` (Actuator; só o `health` é exposto).
 - **Endurecimento:** usuário não-root, raiz somente leitura, sem capabilities, limite de memória (a JVM usa 75% como heap).
 - O `ConfigMap` desliga o console do H2 (sem autenticação) e o log de SQL.
+- Trocar o segredo invalida os tokens já emitidos: `kubectl delete secret cross-border-api-jwt`, crie de novo e `kubectl rollout restart deployment/cross-border-api`.
 
 **CI/CD.** GitHub Actions (`.github/workflows/ci.yml`), a cada push na `main` e em todo pull request:
 1. `./mvnw verify`: compila e roda todos os testes;
 2. valida os manifestos (`kustomize` + `kubeconform`);
-3. builda a imagem e faz um **smoke test**: sobe o container e espera o `readiness`.
+3. builda a imagem e faz um **smoke test**: sobe o container com um segredo JWT aleatório, espera o `readiness`, confere que uma rota protegida sem token dá `401` e que cadastro e login devolvem um token.
 
 Em push na `main`, a imagem também é publicada no GitHub Container Registry (`ghcr.io/<dono>/<repo>`, tags `latest` e `sha-...`). O **deploy não é automático**, porque não há cluster para recebê-lo: é o `kubectl apply -k k8s/` acima, apontando para a imagem do registry com `kustomize edit set image cross-border-api=ghcr.io/<dono>/<repo>:<tag>`.
 
@@ -172,7 +179,7 @@ Em push na `main`, a imagem também é publicada no GitHub Container Registry (`
 - **USD → BRL não foi implementado.** O modelo já está preparado (coluna `direction`), mas faltam decisões de produto: qual cotação usar na volta (compra ou venda) e como contar o limite diário.
 - **Uma cotação por dia.** A PTAX de fechamento sai por volta das 13h; antes disso vale a do dia anterior, e a variação durante o dia não é refletida (em 17/09 o dólar variou cerca de 0,5% entre a abertura e as 11h). Os boletins intradiários do BCB seriam uma melhoria.
 - **`GET /users` lista todos os usuários** (nome, e-mail e documento) para qualquer usuário logado, de propósito, para facilitar os testes. Em produção seria restrito, por exemplo a um perfil administrador.
-- **Segredo do JWT.** O valor do `application.properties` é só para desenvolvimento; em qualquer ambiente real, defina `APP_SECURITY_JWT_SECRET` (mínimo 32 caracteres). Os manifestos do Kubernetes ainda não trazem esse `Secret`.
+- **Segredo do JWT.** O valor do `application.properties` é só para desenvolvimento; em qualquer ambiente real, defina `APP_SECURITY_JWT_SECRET` (mínimo 32 caracteres). No Kubernetes ele vem de um `Secret` criado à mão, sem versionar. Uma melhoria seria um gerenciador de segredos externo (Vault, Sealed Secrets) e rotação de chaves.
 - **CPF/CNPJ**: a unicidade é garantida, mas os dígitos verificadores não são validados.
 - **Banco em memória**: os dados somem ao reiniciar e não é possível escalar horizontalmente (cada instância teria o seu banco). Em produção seria um banco externo (ex.: PostgreSQL).
 - **Depósito é auxiliar de teste** e não gera lançamento no ledger; por isso o extrato de quem depositou não fecha com o saldo.

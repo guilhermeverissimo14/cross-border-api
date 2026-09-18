@@ -36,6 +36,14 @@ spec:
           envFrom:
             - configMapRef:
                 name: cross-border-api
+          env:
+            # Segredo de assinatura dos tokens. O Secret não é versionado: crie-o antes do deploy (ver README).
+            # Sem ele o pod não sobe, em vez de rodar com um segredo conhecido.
+            - name: APP_SECURITY_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: cross-border-api-jwt
+                  key: secret
           resources:
             requests:
               cpu: 250m

@@ -62,14 +62,32 @@ jobs:
 
       - name: Smoke test do container
         run: |
-          docker run -d --name api -p 8080:8080 cross-border-api:ci
+          docker run -d --name api -p 8080:8080 \
+            -e APP_SECURITY_JWT_SECRET="$(openssl rand -base64 48)" cross-border-api:ci
+          ready=false
           for _ in $(seq 1 30); do
-            if curl -sf http://localhost:8080/actuator/health/readiness; then
-              echo; echo "aplicação pronta"; exit 0
+            if curl -sf http://localhost:8080/actuator/health/readiness > /dev/null; then
+              ready=true; break
             fi
             sleep 2
           done
-          echo "a aplicação não ficou pronta a tempo"; docker logs api; exit 1
+          if [ "$ready" != true ]; then
+            echo "a aplicação não ficou pronta a tempo"; docker logs api; exit 1
+          fi
+          echo "aplicação pronta"
+
+          # Rota protegida sem token deve dar 401
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/users)
+          if [ "$code" != 401 ]; then
+            echo "esperava 401 sem token, veio $code"; docker logs api; exit 1
+          fi
+
+          # Cadastro e login funcionam com o segredo injetado pela variável de ambiente
+          curl -sf -X POST http://localhost:8080/users -H 'Content-Type: application/json' \
+            -d '{"fullName":"CI","email":"ci@teste.com","password":"senha123","userType":"PF","document":"00000000001"}' > /dev/null
+          curl -sf -X POST http://localhost:8080/auth/login -H 'Content-Type: application/json' \
+            -d '{"email":"ci@teste.com","password":"senha123"}' | grep -q accessToken \
+            || { echo "login não devolveu token"; docker logs api; exit 1; }
 
       # Só publica a imagem em push na main (pull requests apenas validam o build).
       - name: Login no GitHub Container Registry
