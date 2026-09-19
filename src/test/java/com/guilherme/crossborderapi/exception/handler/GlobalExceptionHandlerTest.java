@@ -3,6 +3,7 @@ package com.guilherme.crossborderapi.exception.handler;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.guilherme.crossborderapi.entity.Wallet;
+import com.guilherme.crossborderapi.exception.ExchangeRateProviderUnavailableException;
 import com.guilherme.crossborderapi.exception.IdempotencyKeyInUseException;
 import org.junit.jupiter.api.Test;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
@@ -83,6 +84,18 @@ class GlobalExceptionHandlerTest {
 
         assertThat(response.getStatusCode().value()).isEqualTo(409);
         assertThat(response.getBody().message()).contains("Tente novamente");
+    }
+
+    @Test
+    void mapsUnavailableQuoteProviderTo503WithAFriendlyMessage() {
+        var ex = new ExchangeRateProviderUnavailableException("timeout em olinda.bcb.gov.br", null);
+
+        ResponseEntity<ErrorResponse> response = handler.handleProviderUnavailable(ex);
+
+        assertThat(response.getStatusCode().value()).isEqualTo(503);
+        assertThat(response.getBody().message())
+                .isEqualTo("Cotação do dólar temporariamente indisponível. Tente novamente em instantes.");
+        assertThat(response.getBody().message()).doesNotContain("olinda");
     }
 
     @Test

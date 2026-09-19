@@ -2,7 +2,9 @@ package com.guilherme.crossborderapi.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -10,6 +12,7 @@ import static org.mockito.Mockito.when;
 import com.guilherme.crossborderapi.client.BcbExchangeRateClient;
 import com.guilherme.crossborderapi.dto.exchangerate.ExchangeRateQuote;
 import com.guilherme.crossborderapi.entity.ExchangeRate;
+import com.guilherme.crossborderapi.exception.ExchangeRateProviderUnavailableException;
 import com.guilherme.crossborderapi.exception.ExchangeRateUnavailableException;
 import com.guilherme.crossborderapi.repository.ExchangeRateRepository;
 import java.math.BigDecimal;
@@ -165,5 +168,58 @@ class ExchangeRateServiceTest {
 
         assertThatThrownBy(() -> exchangeRateService.getBuyRate(date))
                 .isInstanceOf(ExchangeRateUnavailableException.class);
+    }
+
+    // --- BCB fora do ar ---
+
+    private static final ExchangeRateProviderUnavailableException BCB_DOWN =
+            new ExchangeRateProviderUnavailableException("BCB fora do ar", null);
+
+    @Test
+    void whenBcbIsDownItFailsRightAwayWithoutWalkingBackDays() {
+        LocalDate date = LocalDate.of(2026, 9, 14);
+        when(bcbExchangeRateClient.fetchBuyRate(date)).thenThrow(BCB_DOWN);
+
+        assertThatThrownBy(() -> exchangeRateService.getQuote(date)).isSameAs(BCB_DOWN);
+
+        // uma única chamada ao BCB: a queda não é tratada como "dia sem cotação"
+        verify(bcbExchangeRateClient, times(1)).fetchBuyRate(any());
+        verify(exchangeRateRepository, never()).save(any());
+    }
+
+    @Test
+    void whenBcbIsDownItDoesNotFallBackEvenIfAnOlderDayIsCached() {
+        LocalDate sunday = LocalDate.of(2026, 9, 13);
+        when(exchangeRateRepository.findByQuoteDate(sunday)).thenReturn(Optional.empty());
+        when(bcbExchangeRateClient.fetchBuyRate(sunday)).thenThrow(BCB_DOWN);
+
+        assertThatThrownBy(() -> exchangeRateService.getQuote(sunday))
+                .isInstanceOf(ExchangeRateProviderUnavailableException.class);
+
+        verify(exchangeRateRepository, never()).findByQuoteDate(sunday.minusDays(2));
+    }
+
+    @Test
+    void bcbGoingDownMidWalkBackFailsInsteadOfUsingOlderQuotes() {
+        LocalDate sunday = LocalDate.of(2026, 9, 13);
+        LocalDate saturday = sunday.minusDays(1);
+        when(bcbExchangeRateClient.fetchBuyRate(sunday)).thenReturn(Optional.empty());
+        when(bcbExchangeRateClient.fetchBuyRate(saturday)).thenThrow(BCB_DOWN);
+
+        assertThatThrownBy(() -> exchangeRateService.getQuote(sunday))
+                .isInstanceOf(ExchangeRateProviderUnavailableException.class);
+
+        verify(exchangeRateRepository, never()).findByQuoteDate(sunday.minusDays(2));
+    }
+
+    @Test
+    void aQuoteAlreadyCachedForTheExactDayIsStillServedWhileBcbIsDown() {
+        LocalDate date = LocalDate.of(2026, 9, 14);
+        when(exchangeRateRepository.findByQuoteDate(date)).thenReturn(Optional.of(
+                ExchangeRate.builder().quoteDate(date).buyRate(new BigDecimal("5.20")).build()));
+
+        assertThat(exchangeRateService.getQuote(date).buyRate()).isEqualByComparingTo("5.20");
+
+        verifyNoInteractions(bcbExchangeRateClient);
     }
 }

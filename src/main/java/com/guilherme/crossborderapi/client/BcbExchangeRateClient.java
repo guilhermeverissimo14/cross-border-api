@@ -1,5 +1,6 @@
 package com.guilherme.crossborderapi.client;
 
+import com.guilherme.crossborderapi.exception.ExchangeRateProviderUnavailableException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -22,6 +23,7 @@ public class BcbExchangeRateClient {
         this.restClient = restClientBuilder.baseUrl(BASE_URL).build();
     }
 
+    // Optional vazio = o BCB respondeu que não há cotação no dia. Falha de comunicação lança exceção.
     public Optional<BigDecimal> fetchBuyRate(LocalDate date) {
         try {
             BcbQuoteResponse response = restClient.get()
@@ -35,7 +37,7 @@ public class BcbExchangeRateClient {
             return Optional.of(response.value().get(0).cotacaoCompra());
         } catch (RestClientException e) {
             log.warn("Falha ao consultar a API do BCB para a data {}: {}", date, e.getMessage());
-            return Optional.empty();
+            throw new ExchangeRateProviderUnavailableException("API do BCB indisponível para a data " + date, e);
         }
     }
 }

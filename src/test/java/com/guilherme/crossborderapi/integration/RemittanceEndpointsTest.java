@@ -16,6 +16,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.guilherme.crossborderapi.entity.LedgerEntry;
 import com.guilherme.crossborderapi.enums.LedgerEntryType;
+import com.guilherme.crossborderapi.exception.ExchangeRateProviderUnavailableException;
 import com.guilherme.crossborderapi.repository.ExchangeRateRepository;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -264,6 +265,23 @@ class RemittanceEndpointsTest extends ApiIntegrationTest {
         assertThat(walletBalance(sender, "BRL")).isEqualByComparingTo("100");
         assertThat(walletBalance(receiver, "USD")).isEqualByComparingTo("0");
         getAs(sender, "/users/" + sender + "/ledger-entries").andExpect(jsonPath("$.length()").value(0));
+    }
+
+    @Test
+    void bcbDownReturns503WithAClearMessageAndNothingIsDebited() throws Exception {
+        exchangeRateRepository.deleteAll();
+        when(bcbClient.fetchBuyRate(any()))
+                .thenThrow(new ExchangeRateProviderUnavailableException("BCB fora do ar", null));
+        long sender = createUser("PF");
+        long receiver = createUser("PF");
+        deposit(sender, "BRL", "100");
+
+        postRemittance("bcb-down", sender, receiver, "100")
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.message")
+                        .value("Cotação do dólar temporariamente indisponível. Tente novamente em instantes."));
+
+        assertNothingPersistedAndMoneyBack(sender, receiver, "100");
     }
 
     @Test

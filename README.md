@@ -96,6 +96,7 @@ Erros seguem sempre o mesmo formato (`timestamp`, `status`, `error`, `message`, 
 | `404` | Usuário ou remessa inexistente (ou remessa de que o usuário não participa) |
 | `409` | E-mail/documento já cadastrado, carteira alterada por outra operação, chave de idempotência em uso |
 | `422` | Regra de negócio: saldo insuficiente, limite diário, remessa para si mesmo, cotação indisponível, chave reutilizada com outros dados |
+| `503` | API do BCB fora do ar (e sem a cotação do dia em cache); é só tentar de novo |
 
 ---
 
@@ -105,7 +106,7 @@ Erros seguem sempre o mesmo formato (`timestamp`, `status`, `error`, `message`, 
 |---|---|
 | Remessa = conversão + transferência, revertida em qualquer inconsistência | `RemittanceService` em **uma única `@Transactional`**: débito, crédito, remessa e lançamentos são gravados juntos, ou nada é gravado |
 | Cotação do BCB, campo `cotacaoCompra` | `BcbExchangeRateClient` (API PTAX). A cotação usada fica gravada na remessa |
-| Fim de semana: usar a última cotação | Fallback dia a dia, até 7 dias para trás. Cobre também feriado, "hoje antes da publicação" e BCB fora do ar |
+| Fim de semana: usar a última cotação | Fallback dia a dia, até 7 dias para trás, como o enunciado pede ("a última cotação obtida"). O 7 é escolha nossa: um fim de semana precisa de até 3 dias (segunda antes das 13h volta para a sexta) e feriados prolongados como o Carnaval, de uns 5. Cobre também feriado e "hoje antes da publicação". Isso vale quando o BCB **responde** que não há cotação; se ele **não responde**, é outro caso (ver o cliente do BCB, abaixo) |
 | Validar saldo antes da remessa | `422 Saldo insuficiente` |
 | Usuário com nome, e-mail, senha, CPF (PF) ou CNPJ (PJ); e-mail e documento únicos | Constraints `UNIQUE` no banco; duplicidade → `409`; senha com BCrypt |
 | Limite diário: PF R$ 10 mil, PJ R$ 50 mil | **Strategy**: `PfDailyLimitPolicy` e `PjDailyLimitPolicy` implementam `DailyLimitPolicy`. Soma o BRL já enviado no dia; passou do limite → `422` |
@@ -125,7 +126,7 @@ Erros seguem sempre o mesmo formato (`timestamp`, `status`, `error`, `message`, 
 - **Lock otimista** (`@Version`) nas carteiras: duas remessas concorrentes na mesma carteira, uma leva `409` em vez de sobrescrever o saldo.
 - **Ledger imutável** (partida dobrada): cada remessa grava um `DEBIT` em BRL na carteira de quem envia e um `CREDIT` em USD na de quem recebe. Só leitura na API.
 - **Cache das cotações** na tabela `exchange_rates` (uma por dia). É um cache em banco, não Spring Cache/Caffeine.
-- **Cliente do BCB resiliente**: timeouts de 3 s (conexão) e 5 s (leitura); erro ou silêncio da API vira fallback, nunca um 500.
+- **Cliente do BCB resiliente**: timeouts de 3 s (conexão) e 5 s (leitura). O sistema distingue *"o BCB respondeu que não há cotação"* (fim de semana ou feriado: fallback para a última cotação) de *"o BCB não respondeu"* (erro, timeout ou 5xx). No segundo caso ele **falha direto com `503`** e uma mensagem clara, sem debitar nada e sem voltar dias às cegas: sem resposta do BCB não dá para saber se o dia é útil ou não, e converter dinheiro com uma cotação antiga seria pior que pedir para tentar de novo.
 - **Consultas extras** (remessas, extrato, cotação por data) e logs nos pontos de negócio, sem dados pessoais.
 
 ## Docker, Kubernetes e CI/CD

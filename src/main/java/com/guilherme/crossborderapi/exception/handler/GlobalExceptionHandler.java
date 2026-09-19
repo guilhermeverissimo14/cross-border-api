@@ -2,6 +2,7 @@ package com.guilherme.crossborderapi.exception.handler;
 
 import com.guilherme.crossborderapi.exception.DailyLimitExceededException;
 import com.guilherme.crossborderapi.exception.DuplicateResourceException;
+import com.guilherme.crossborderapi.exception.ExchangeRateProviderUnavailableException;
 import com.guilherme.crossborderapi.exception.ExchangeRateUnavailableException;
 import com.guilherme.crossborderapi.exception.IdempotencyKeyInUseException;
 import com.guilherme.crossborderapi.exception.IdempotencyKeyReuseException;
@@ -58,6 +59,15 @@ public class GlobalExceptionHandler {
         log.warn("Regra de negócio violada: {}", ex.getMessage());
         ErrorResponse body = ErrorResponse.of(HttpStatus.UNPROCESSABLE_CONTENT, ex.getMessage());
         return ResponseEntity.status(HttpStatus.UNPROCESSABLE_CONTENT).body(body);
+    }
+
+    // O BCB não respondeu: o cliente pode tentar de novo. Não é falha de regra de negócio (422) nem bug (500).
+    @ExceptionHandler(ExchangeRateProviderUnavailableException.class)
+    public ResponseEntity<ErrorResponse> handleProviderUnavailable(ExchangeRateProviderUnavailableException ex) {
+        log.warn("Fonte de cotação indisponível: {}", ex.getMessage());
+        ErrorResponse body = ErrorResponse.of(HttpStatus.SERVICE_UNAVAILABLE,
+                "Cotação do dólar temporariamente indisponível. Tente novamente em instantes.");
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(body);
     }
 
     @ExceptionHandler(InvalidCredentialsException.class)

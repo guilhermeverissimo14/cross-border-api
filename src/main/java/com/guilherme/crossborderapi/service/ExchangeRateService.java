@@ -18,7 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class ExchangeRateService {
 
-    // Cobre fim de semana/feriado prolongado (ex: virada de ano) sem correr pra trás pra sempre caso a API do BCB fique fora do ar por muito tempo.
+    // Cobre fim de semana/feriado prolongado (ex: virada de ano) sem correr pra trás pra sempre.
     private static final int MAX_LOOKBACK_DAYS = 7;
 
     private final ExchangeRateRepository exchangeRateRepository;
@@ -29,7 +29,8 @@ public class ExchangeRateService {
         return getQuote(date).buyRate();
     }
 
-    // Tenta a data pedida; se não tiver cotação (fim de semana, feriado ou API fora do ar os dois casos chegam aqui como Optional vazio), tenta o dia anterior, e assim por diante.
+    // Tenta a data pedida; se o BCB responder que não há cotação (fim de semana, feriado), tenta o dia anterior, e assim por diante.
+    // Se o BCB não responder, o cliente lança ExchangeRateProviderUnavailableException e a consulta falha (503): não se volta dias às cegas.
     // Devolve também a data em que a cotação realmente existe, pra quem consulta enxergar o fallback.
     @Transactional
     public ExchangeRateQuote getQuote(LocalDate date) {

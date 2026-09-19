@@ -10,6 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Optional;
+import com.guilherme.crossborderapi.exception.ExchangeRateProviderUnavailableException;
 import org.junit.jupiter.api.Test;
 
 // Cada teste usa datas próprias porque a cotação fica em cache no banco, que é compartilhado entre os testes.
@@ -63,6 +64,33 @@ class ExchangeRateEndpointTest extends ApiIntegrationTest {
     }
 
     @Test
+    void bcbDownReturns503() throws Exception {
+        when(bcbClient.fetchBuyRate(any())).thenThrow(bcbDown());
+
+        getJson("/exchange-rates/2025-09-25")
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.status").value(503))
+                .andExpect(jsonPath("$.message")
+                        .value("Cotação do dólar temporariamente indisponível. Tente novamente em instantes."));
+
+        verify(bcbClient, times(1)).fetchBuyRate(any());
+    }
+
+    @Test
+    void bcbDownDoesNotFallBackToAnOlderCachedDay() throws Exception {
+        when(bcbClient.fetchBuyRate(LocalDate.of(2025, 8, 14))).thenReturn(Optional.of(new BigDecimal("5.4400")));
+        getJson("/exchange-rates/2025-08-14").andExpect(status().isOk());
+
+        when(bcbClient.fetchBuyRate(any())).thenThrow(bcbDown());
+
+        getJson("/exchange-rates/2025-08-15").andExpect(status().isServiceUnavailable());
+        // o dia que já está em cache continua sendo servido
+        getJson("/exchange-rates/2025-08-14")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.buyRate").value(5.44));
+    }
+
+    @Test
     void futureDateReturns422WithoutCallingBcb() throws Exception {
         String tomorrow = LocalDate.now().plusDays(1).toString();
 
@@ -79,5 +107,9 @@ class ExchangeRateEndpointTest extends ApiIntegrationTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("Valor inválido para o parâmetro 'data'"));
         getJson("/exchange-rates/2026-02-30").andExpect(status().isBadRequest());
+    }
+
+    private ExchangeRateProviderUnavailableException bcbDown() {
+        return new ExchangeRateProviderUnavailableException("BCB fora do ar", null);
     }
 }

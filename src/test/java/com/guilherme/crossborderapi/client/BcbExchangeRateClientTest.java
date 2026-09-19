@@ -1,10 +1,14 @@
 package com.guilherme.crossborderapi.client;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
+import static org.springframework.test.web.client.response.MockRestResponseCreators.withException;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withServerError;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
+import com.guilherme.crossborderapi.exception.ExchangeRateProviderUnavailableException;
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Optional;
@@ -52,7 +56,7 @@ class BcbExchangeRateClientTest {
     }
 
     @Test
-    void returnsEmptyInsteadOfThrowingWhenApiIsDown() {
+    void throwsProviderUnavailableWhenApiReturnsServerError() {
         RestClient.Builder builder = RestClient.builder();
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
         BcbExchangeRateClient client = new BcbExchangeRateClient(builder);
@@ -60,8 +64,21 @@ class BcbExchangeRateClientTest {
         server.expect(requestTo(EXPECTED_URL))
                 .andRespond(withServerError());
 
-        Optional<BigDecimal> result = client.fetchBuyRate(LocalDate.of(2026, 9, 17));
+        assertThatThrownBy(() -> client.fetchBuyRate(LocalDate.of(2026, 9, 17)))
+                .isInstanceOf(ExchangeRateProviderUnavailableException.class)
+                .hasMessageContaining("2026-09-17");
+    }
 
-        assertThat(result).isEmpty();
+    @Test
+    void throwsProviderUnavailableWhenConnectionFails() {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        BcbExchangeRateClient client = new BcbExchangeRateClient(builder);
+
+        server.expect(requestTo(EXPECTED_URL))
+                .andRespond(withException(new IOException("connection reset")));
+
+        assertThatThrownBy(() -> client.fetchBuyRate(LocalDate.of(2026, 9, 17)))
+                .isInstanceOf(ExchangeRateProviderUnavailableException.class);
     }
 }

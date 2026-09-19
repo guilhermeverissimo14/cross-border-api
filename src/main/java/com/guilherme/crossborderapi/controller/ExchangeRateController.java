@@ -42,6 +42,8 @@ public class ExchangeRateController {
                     content = @Content(schema = @Schema(implementation = ExchangeRateResponse.class))),
             @ApiResponse(responseCode = "400", description = "Data em formato inválido (use AAAA-MM-DD)",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "503", description = "API do BCB fora do ar e sem cotação recente em cache; tente novamente",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
             @ApiResponse(responseCode = "422", description = "Data futura, ou nenhuma cotação nos últimos 7 dias",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     })
