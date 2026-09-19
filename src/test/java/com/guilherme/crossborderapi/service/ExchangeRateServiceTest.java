@@ -16,12 +16,15 @@ import com.guilherme.crossborderapi.exception.ExchangeRateProviderUnavailableExc
 import com.guilherme.crossborderapi.exception.ExchangeRateUnavailableException;
 import com.guilherme.crossborderapi.repository.ExchangeRateRepository;
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.Optional;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -36,8 +39,16 @@ class ExchangeRateServiceTest {
     @Mock
     private BcbExchangeRateClient bcbExchangeRateClient;
 
-    @InjectMocks
+    // Sexta-feira 18/09/2026, 15:00 em Brasília
+    private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-09-18T18:00:00Z"), ZoneId.of("America/Sao_Paulo"));
+    private static final LocalDate TODAY = LocalDate.of(2026, 9, 18);
+
     private ExchangeRateService exchangeRateService;
+
+    @BeforeEach
+    void setUp() {
+        exchangeRateService = new ExchangeRateService(exchangeRateRepository, bcbExchangeRateClient, CLOCK);
+    }
 
     @Test
     void returnsCachedRateWithoutCallingBcbApi() {
@@ -150,11 +161,29 @@ class ExchangeRateServiceTest {
 
     @Test
     void rejectsFutureDatesWithoutTouchingTheCacheOrBcb() {
-        LocalDate tomorrow = LocalDate.now().plusDays(1);
+        LocalDate tomorrow = TODAY.plusDays(1);
 
         assertThatThrownBy(() -> exchangeRateService.getQuote(tomorrow))
                 .isInstanceOf(ExchangeRateUnavailableException.class);
         verifyNoInteractions(exchangeRateRepository, bcbExchangeRateClient);
+    }
+
+    @Test
+    void todayIsNotConsideredAFutureDate() {
+        when(exchangeRateRepository.findByQuoteDate(TODAY)).thenReturn(Optional.of(
+                ExchangeRate.builder().quoteDate(TODAY).buyRate(new BigDecimal("5.20")).build()));
+
+        assertThat(exchangeRateService.getQuote(TODAY).buyRate()).isEqualByComparingTo("5.20");
+    }
+
+    @Test
+    void whatCountsAsFutureDependsOnTheClockNotOnTheRealDate() {
+        Clock lateSaturday = Clock.fixed(Instant.parse("2026-09-20T02:59:00Z"), ZoneId.of("America/Sao_Paulo"));
+        ExchangeRateService service = new ExchangeRateService(exchangeRateRepository, bcbExchangeRateClient, lateSaturday);
+        // 23:59 de sábado 19/09 em Brasília: domingo 20 ainda é futuro, mesmo já sendo dia 20 em UTC
+
+        assertThatThrownBy(() -> service.getQuote(LocalDate.of(2026, 9, 20)))
+                .isInstanceOf(ExchangeRateUnavailableException.class);
     }
 
     @Test

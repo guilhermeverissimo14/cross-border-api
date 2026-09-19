@@ -7,6 +7,7 @@ import com.guilherme.crossborderapi.entity.ExchangeRate;
 import com.guilherme.crossborderapi.exception.ExchangeRateUnavailableException;
 import com.guilherme.crossborderapi.repository.ExchangeRateRepository;
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.LocalDate;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
@@ -25,6 +26,7 @@ public class ExchangeRateService {
 
     private final ExchangeRateRepository exchangeRateRepository;
     private final BcbExchangeRateClient bcbExchangeRateClient;
+    private final Clock clock;
 
     // Tenta a data pedida; se o BCB responder que não há cotação (fim de semana, feriado), tenta o dia anterior, e assim por diante.
     // Se o BCB não responder, o cliente lança ExchangeRateProviderUnavailableException e a consulta falha (503): não se volta dias às cegas.
@@ -33,7 +35,7 @@ public class ExchangeRateService {
     @Cacheable(cacheNames = CacheConfig.EXCHANGE_RATES, key = "#date", unless = "!#result.quoteDate().equals(#date)")
     @Transactional
     public ExchangeRateQuote getQuote(LocalDate date) {
-        if (date.isAfter(LocalDate.now())) {
+        if (date.isAfter(LocalDate.now(clock))) {
             throw new ExchangeRateUnavailableException("Não existe cotação para datas futuras: " + date);
         }
 

@@ -7,6 +7,7 @@ import com.guilherme.crossborderapi.entity.User;
 import com.guilherme.crossborderapi.exception.InvalidCredentialsException;
 import com.guilherme.crossborderapi.repository.UserRepository;
 import com.guilherme.crossborderapi.validation.InputNormalizer;
+import java.time.Clock;
 import java.time.Instant;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -30,6 +31,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtEncoder jwtEncoder;
     private final JwtProperties jwtProperties;
+    private final Clock clock;
 
     @Transactional(readOnly = true)
     public LoginResponse login(LoginRequest request) {
@@ -38,7 +40,7 @@ public class AuthService {
                 .filter(found -> passwordEncoder.matches(request.password(), found.getPassword()))
                 .orElseThrow(InvalidCredentialsException::new);
 
-        Instant now = Instant.now();
+        Instant now = Instant.now(clock);
         JwtClaimsSet claims = JwtClaimsSet.builder()
                 .subject(String.valueOf(user.getId()))
                 .issuedAt(now)

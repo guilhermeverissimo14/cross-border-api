@@ -26,6 +26,7 @@ import com.guilherme.crossborderapi.repository.WalletRepository;
 import com.guilherme.crossborderapi.service.dailylimit.DailyLimitPolicyProvider;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Clock;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
@@ -53,6 +54,7 @@ public class RemittanceService {
     private final LedgerEntryRepository ledgerEntryRepository;
     private final ExchangeRateService exchangeRateService;
     private final DailyLimitPolicyProvider dailyLimitPolicyProvider;
+    private final Clock clock;
 
     @Transactional
     public RemittanceResponse createRemittance(Long senderId, RemittanceCreateRequest request, String idempotencyKey) {
@@ -87,7 +89,7 @@ public class RemittanceService {
 
         validateDailyLimit(sender, amountBrl);
 
-        ExchangeRateQuote quote = exchangeRateService.getQuote(LocalDate.now());
+        ExchangeRateQuote quote = exchangeRateService.getQuote(LocalDate.now(clock));
         BigDecimal exchangeRate = quote.buyRate();
         BigDecimal amountUsd = amountBrl.divide(exchangeRate, MONEY_SCALE, RoundingMode.HALF_UP); //amountBrl / exchangeRate
 
@@ -180,7 +182,7 @@ public class RemittanceService {
     private void validateDailyLimit(User sender, BigDecimal amountBrl) {
         BigDecimal dailyLimit = dailyLimitPolicyProvider.getDailyLimit(sender.getUserType());
 
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(clock);
         BigDecimal alreadySentToday = remittanceRepository.sumAmountBrlBySender(
                 sender.getId(), today.atStartOfDay(), today.plusDays(1).atStartOfDay());
 

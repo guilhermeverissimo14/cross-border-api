@@ -35,17 +35,20 @@ import com.guilherme.crossborderapi.repository.UserRepository;
 import com.guilherme.crossborderapi.repository.WalletRepository;
 import com.guilherme.crossborderapi.service.dailylimit.DailyLimitPolicyProvider;
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -73,8 +76,22 @@ class RemittanceServiceTest {
     @Mock
     private DailyLimitPolicyProvider dailyLimitPolicyProvider;
 
-    @InjectMocks
+    // Domingo 20/09/2026, 12:00 em Brasília
+    private static final Instant NOW = Instant.parse("2026-09-20T15:00:00Z");
+    private static final LocalDate TODAY = LocalDate.of(2026, 9, 20);
+    private static final ZoneId BRASILIA = ZoneId.of("America/Sao_Paulo");
+
     private RemittanceService remittanceService;
+
+    @BeforeEach
+    void setUp() {
+        remittanceService = serviceAt(NOW);
+    }
+
+    private RemittanceService serviceAt(Instant instant) {
+        return new RemittanceService(userRepository, walletRepository, remittanceRepository, ledgerEntryRepository,
+                exchangeRateService, dailyLimitPolicyProvider, Clock.fixed(instant, BRASILIA));
+    }
 
     @Test
     void throwsWhenSenderAndReceiverAreTheSame() {
@@ -154,7 +171,8 @@ class RemittanceServiceTest {
         assertThat(response.amountBrl()).isEqualByComparingTo("1000.00");
         assertThat(response.amountUsd()).isEqualByComparingTo("200.00");
         assertThat(response.exchangeRate()).isEqualByComparingTo("5.00");
-        assertThat(response.quoteDate()).isEqualTo(LocalDate.now());
+        assertThat(response.quoteDate()).isEqualTo(TODAY);
+        verify(exchangeRateService).getQuote(TODAY); // a cotação pedida é a do dia do relógio
         assertThat(senderWallet.getBalance()).isEqualByComparingTo("1000.00");
         assertThat(receiverWallet.getBalance()).isEqualByComparingTo("200.00");
 
@@ -195,8 +213,43 @@ class RemittanceServiceTest {
     }
 
     @Test
+    void dailyLimitCountsFromMidnightOfTheClockDay() {
+        stubSuccessfulRemittance();
+
+        remittanceService.createRemittance(1L, new RemittanceCreateRequest(2L, new BigDecimal("100.00")), KEY);
+
+        verify(remittanceRepository).sumAmountBrlBySender(
+                1L, LocalDateTime.of(2026, 9, 20, 0, 0), LocalDateTime.of(2026, 9, 21, 0, 0));
+    }
+
+    @Test
+    void dailyLimitWindowMovesToTheNextDayAfterMidnight() {
+        stubSuccessfulRemittance();
+        // 00:00:01 de 21/09 em Brasília (UTC-3) são 03:00:01Z: o dia virou
+        RemittanceService afterMidnight = serviceAt(Instant.parse("2026-09-21T03:00:01Z"));
+
+        afterMidnight.createRemittance(1L, new RemittanceCreateRequest(2L, new BigDecimal("100.00")), KEY);
+
+        verify(remittanceRepository).sumAmountBrlBySender(
+                1L, LocalDateTime.of(2026, 9, 21, 0, 0), LocalDateTime.of(2026, 9, 22, 0, 0));
+        verify(exchangeRateService).getQuote(LocalDate.of(2026, 9, 21));
+    }
+
+    @Test
+    void justBeforeMidnightInBrasiliaStillCountsAsTheSameDay() {
+        stubSuccessfulRemittance();
+        // 23:59:59 de 20/09 em Brasília já é dia 21 em UTC (02:59:59Z), mas para o cliente ainda é dia 20
+        RemittanceService lastSecond = serviceAt(Instant.parse("2026-09-21T02:59:59Z"));
+
+        lastSecond.createRemittance(1L, new RemittanceCreateRequest(2L, new BigDecimal("100.00")), KEY);
+
+        verify(remittanceRepository).sumAmountBrlBySender(
+                1L, LocalDateTime.of(2026, 9, 20, 0, 0), LocalDateTime.of(2026, 9, 21, 0, 0));
+    }
+
+    @Test
     void recordsTheDayOfTheQuoteUsedWhenItIsAFallback() {
-        LocalDate fridayQuote = LocalDate.now().minusDays(2);
+        LocalDate fridayQuote = TODAY.minusDays(2);
         Wallet senderWallet = Wallet.builder().balance(new BigDecimal("2000.00")).build();
         Wallet receiverWallet = Wallet.builder().balance(BigDecimal.ZERO).build();
         stubValidRemittanceScenario(senderWallet, receiverWallet, fridayQuote);
@@ -389,8 +442,16 @@ class RemittanceServiceTest {
         verifyNoInteractions(remittanceRepository);
     }
 
+    private void stubSuccessfulRemittance() {
+        stubValidRemittanceScenario(
+                Wallet.builder().balance(new BigDecimal("2000.00")).build(),
+                Wallet.builder().balance(BigDecimal.ZERO).build(),
+                LocalDate.of(2026, 9, 20));
+        when(remittanceRepository.save(any(Remittance.class))).thenAnswer(invocation -> invocation.getArgument(0));
+    }
+
     private void stubValidRemittanceScenario(Wallet senderWallet, Wallet receiverWallet) {
-        stubValidRemittanceScenario(senderWallet, receiverWallet, LocalDate.now());
+        stubValidRemittanceScenario(senderWallet, receiverWallet, TODAY);
     }
 
     private void stubValidRemittanceScenario(Wallet senderWallet, Wallet receiverWallet, LocalDate quoteDate) {
