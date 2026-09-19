@@ -17,6 +17,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.guilherme.crossborderapi.entity.LedgerEntry;
 import com.guilherme.crossborderapi.enums.LedgerEntryType;
 import com.guilherme.crossborderapi.exception.ExchangeRateProviderUnavailableException;
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
@@ -38,6 +40,7 @@ class RemittanceEndpointsTest extends ApiIntegrationTest {
                 .andExpect(jsonPath("$.amountBrl").value(1000.0))
                 .andExpect(jsonPath("$.amountUsd").value(200.0))
                 .andExpect(jsonPath("$.exchangeRate").value(5.0))
+                .andExpect(jsonPath("$.quoteDate").value(LocalDate.now().toString()))
                 .andExpect(jsonPath("$.direction").value("BRL_TO_USD"))
                 .andExpect(jsonPath("$.status").value("COMPLETED"))
                 .andExpect(jsonPath("$.createdAt").exists());
@@ -46,6 +49,32 @@ class RemittanceEndpointsTest extends ApiIntegrationTest {
         assertThat(walletBalance(receiver, "USD")).isEqualByComparingTo("200");
         assertThat(walletBalance(sender, "USD")).isEqualByComparingTo("0");
         assertThat(walletBalance(receiver, "BRL")).isEqualByComparingTo("0");
+    }
+
+    @Test
+    void remittanceOnADayWithoutQuoteRecordsTheDayOfTheQuoteActuallyUsed() throws Exception {
+        LocalDate quoteDay = LocalDate.now().minusDays(2);
+        clearQuoteCaches();
+        when(bcbClient.fetchBuyRate(any())).thenReturn(Optional.empty());
+        when(bcbClient.fetchBuyRate(quoteDay)).thenReturn(Optional.of(new BigDecimal("4.0000")));
+        long sender = createUser("PF");
+        long receiver = createUser("PF");
+        deposit(sender, "BRL", "1000");
+
+        long id = idFrom(postRemittance("fallback-day", sender, receiver, "1000")
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.exchangeRate").value(4.0))
+                .andExpect(jsonPath("$.amountUsd").value(250.0))
+                .andExpect(jsonPath("$.quoteDate").value(quoteDay.toString())));
+
+        // O dia da cotação fica gravado: consulta e reenvio devolvem o mesmo valor
+        getAs(sender, "/remittances/" + id).andExpect(jsonPath("$.quoteDate").value(quoteDay.toString()));
+        postRemittance("fallback-day", sender, receiver, "1000")
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").value(id))
+                .andExpect(jsonPath("$.quoteDate").value(quoteDay.toString()));
+        getAs(sender, "/users/" + sender + "/remittances")
+                .andExpect(jsonPath("$[0].quoteDate").value(quoteDay.toString()));
     }
 
     @Test

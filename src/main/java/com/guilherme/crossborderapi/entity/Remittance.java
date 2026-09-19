@@ -14,6 +14,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -55,6 +56,9 @@ public class Remittance {
 
     @Column(name = "exchange_rate", nullable = false, precision = 19, scale = 6)
     private BigDecimal exchangeRate;
+
+    @Column(name = "quote_date", nullable = false)
+    private LocalDate quoteDate;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "direction", nullable = false, length = 20)

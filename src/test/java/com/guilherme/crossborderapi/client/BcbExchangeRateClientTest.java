@@ -56,6 +56,46 @@ class BcbExchangeRateClientTest {
     }
 
     @Test
+    void throwsProviderUnavailableWhenTheBodyIsEmpty() {
+        BcbExchangeRateClient client = clientRespondingWith("");
+
+        assertThatThrownBy(() -> client.fetchBuyRate(LocalDate.of(2026, 9, 17)))
+                .isInstanceOf(ExchangeRateProviderUnavailableException.class)
+                .hasMessageContaining("fora do formato");
+    }
+
+    @Test
+    void throwsProviderUnavailableWhenTheValueFieldIsMissing() {
+        BcbExchangeRateClient client = clientRespondingWith("{}");
+
+        assertThatThrownBy(() -> client.fetchBuyRate(LocalDate.of(2026, 9, 17)))
+                .isInstanceOf(ExchangeRateProviderUnavailableException.class);
+    }
+
+    @Test
+    void throwsProviderUnavailableWhenTheQuoteHasNoBuyRate() {
+        BcbExchangeRateClient client = clientRespondingWith("{\"value\":[{\"cotacaoVenda\":5.1240}]}");
+
+        assertThatThrownBy(() -> client.fetchBuyRate(LocalDate.of(2026, 9, 17)))
+                .isInstanceOf(ExchangeRateProviderUnavailableException.class);
+    }
+
+    @Test
+    void throwsProviderUnavailableWhenTheBodyIsNotJson() {
+        BcbExchangeRateClient client = clientRespondingWith("<html>Bad Gateway</html>");
+
+        assertThatThrownBy(() -> client.fetchBuyRate(LocalDate.of(2026, 9, 17)))
+                .isInstanceOf(ExchangeRateProviderUnavailableException.class);
+    }
+
+    private BcbExchangeRateClient clientRespondingWith(String jsonBody) {
+        RestClient.Builder builder = RestClient.builder();
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        server.expect(requestTo(EXPECTED_URL)).andRespond(withSuccess(jsonBody, MediaType.APPLICATION_JSON));
+        return new BcbExchangeRateClient(builder);
+    }
+
+    @Test
     void throwsProviderUnavailableWhenApiReturnsServerError() {
         RestClient.Builder builder = RestClient.builder();
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();

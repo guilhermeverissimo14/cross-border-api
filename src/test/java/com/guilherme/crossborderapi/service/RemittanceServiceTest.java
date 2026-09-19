@@ -153,6 +153,7 @@ class RemittanceServiceTest {
         assertThat(response.amountBrl()).isEqualByComparingTo("1000.00");
         assertThat(response.amountUsd()).isEqualByComparingTo("200.00");
         assertThat(response.exchangeRate()).isEqualByComparingTo("5.00");
+        assertThat(response.quoteDate()).isEqualTo(LocalDate.now());
         assertThat(senderWallet.getBalance()).isEqualByComparingTo("1000.00");
         assertThat(receiverWallet.getBalance()).isEqualByComparingTo("200.00");
 
@@ -176,6 +177,23 @@ class RemittanceServiceTest {
         assertThat(creditEntry.getReferenceId()).isEqualTo(100L);
     }
 
+    @Test
+    void recordsTheDayOfTheQuoteUsedWhenItIsAFallback() {
+        LocalDate fridayQuote = LocalDate.now().minusDays(2);
+        Wallet senderWallet = Wallet.builder().balance(new BigDecimal("2000.00")).build();
+        Wallet receiverWallet = Wallet.builder().balance(BigDecimal.ZERO).build();
+        stubValidRemittanceScenario(senderWallet, receiverWallet, fridayQuote);
+        when(remittanceRepository.save(any(Remittance.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        RemittanceResponse response = remittanceService.createRemittance(
+                1L, new RemittanceCreateRequest(2L, new BigDecimal("1000.00")), KEY);
+
+        assertThat(response.quoteDate()).isEqualTo(fridayQuote);
+        ArgumentCaptor<Remittance> saved = ArgumentCaptor.forClass(Remittance.class);
+        verify(remittanceRepository).save(saved.capture());
+        assertThat(saved.getValue().getQuoteDate()).isEqualTo(fridayQuote);
+    }
+
     // Idempotência
 
     @Test
@@ -189,6 +207,7 @@ class RemittanceServiceTest {
         assertThat(response.id()).isEqualTo(100L);
         assertThat(response.amountBrl()).isEqualByComparingTo("1000.00");
         assertThat(response.amountUsd()).isEqualByComparingTo("200.00");
+        assertThat(response.quoteDate()).isEqualTo(LocalDate.of(2026, 9, 18)); // a data gravada, não a de hoje
         // Nada além da consulta pela chave: não valida saldo/limite, não busca cotação, não mexe em
         // carteira, não grava remessa nem ledger.
         verifyNoInteractions(userRepository, walletRepository, ledgerEntryRepository,
@@ -354,6 +373,10 @@ class RemittanceServiceTest {
     }
 
     private void stubValidRemittanceScenario(Wallet senderWallet, Wallet receiverWallet) {
+        stubValidRemittanceScenario(senderWallet, receiverWallet, LocalDate.now());
+    }
+
+    private void stubValidRemittanceScenario(Wallet senderWallet, Wallet receiverWallet, LocalDate quoteDate) {
         User sender = User.builder().id(1L).userType(UserType.PF).build();
         User receiver = User.builder().id(2L).build();
 
@@ -365,7 +388,7 @@ class RemittanceServiceTest {
         when(remittanceRepository.sumAmountBrlBySender(any(), any(LocalDateTime.class), any(LocalDateTime.class)))
                 .thenReturn(BigDecimal.ZERO);
         when(exchangeRateService.getQuote(any(LocalDate.class)))
-                .thenReturn(new ExchangeRateQuote(LocalDate.now(), new BigDecimal("5.00")));
+                .thenReturn(new ExchangeRateQuote(quoteDate, new BigDecimal("5.00")));
     }
 
     private Remittance previousRemittance() {
@@ -376,6 +399,7 @@ class RemittanceServiceTest {
                 .amountBrl(new BigDecimal("1000.00"))
                 .amountUsd(new BigDecimal("200.00"))
                 .exchangeRate(new BigDecimal("5.00"))
+                .quoteDate(LocalDate.of(2026, 9, 18))
                 .direction(RemittanceDirection.BRL_TO_USD)
                 .status(RemittanceStatus.COMPLETED)
                 .idempotencyKey(KEY)

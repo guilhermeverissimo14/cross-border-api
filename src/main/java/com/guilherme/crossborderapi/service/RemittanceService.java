@@ -1,5 +1,6 @@
 package com.guilherme.crossborderapi.service;
 
+import com.guilherme.crossborderapi.dto.exchangerate.ExchangeRateQuote;
 import com.guilherme.crossborderapi.dto.remittance.RemittanceCreateRequest;
 import com.guilherme.crossborderapi.dto.remittance.RemittanceResponse;
 import com.guilherme.crossborderapi.entity.LedgerEntry;
@@ -85,7 +86,8 @@ public class RemittanceService {
 
         validateDailyLimit(sender, amountBrl);
 
-        BigDecimal exchangeRate = exchangeRateService.getQuote(LocalDate.now()).buyRate();
+        ExchangeRateQuote quote = exchangeRateService.getQuote(LocalDate.now());
+        BigDecimal exchangeRate = quote.buyRate();
         BigDecimal amountUsd = amountBrl.divide(exchangeRate, MONEY_SCALE, RoundingMode.HALF_UP); //amountBrl / exchangeRate
 
         senderWallet.setBalance(senderWallet.getBalance().subtract(amountBrl));
@@ -99,6 +101,7 @@ public class RemittanceService {
                 .amountBrl(amountBrl)
                 .amountUsd(amountUsd)
                 .exchangeRate(exchangeRate)
+                .quoteDate(quote.quoteDate())
                 .direction(RemittanceDirection.BRL_TO_USD)
                 .status(RemittanceStatus.COMPLETED)
                 .idempotencyKey(idempotencyKey)

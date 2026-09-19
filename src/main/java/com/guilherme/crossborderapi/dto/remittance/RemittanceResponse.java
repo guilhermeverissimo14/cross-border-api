@@ -5,6 +5,7 @@ import com.guilherme.crossborderapi.enums.RemittanceDirection;
 import com.guilherme.crossborderapi.enums.RemittanceStatus;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 public record RemittanceResponse(
@@ -26,6 +27,10 @@ public record RemittanceResponse(
         @Schema(description = "Cotação utilizada nessa remessa", example = "5.1234")
         BigDecimal exchangeRate,
 
+        @Schema(description = "Dia a que pertence a cotação usada. Difere do dia da remessa em fim de semana, "
+                + "feriado ou antes da publicação do dia (vale a última cotação disponível)", example = "2026-09-18")
+        LocalDate quoteDate,
+
         @Schema(description = "Sentido da conversão")
         RemittanceDirection direction,
 
@@ -44,6 +49,7 @@ public record RemittanceResponse(
                 remittance.getAmountBrl(),
                 remittance.getAmountUsd(),
                 remittance.getExchangeRate(),
+                remittance.getQuoteDate(),
                 remittance.getDirection(),
                 remittance.getStatus(),
                 remittance.getCreatedAt()

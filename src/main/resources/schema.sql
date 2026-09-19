@@ -54,6 +54,7 @@ CREATE TABLE remittances (
     amount_brl     DECIMAL(19, 2) NOT NULL,
     amount_usd     DECIMAL(19, 2) NOT NULL,
     exchange_rate  DECIMAL(19, 6) NOT NULL,
+    quote_date     DATE           NOT NULL,
     direction      VARCHAR(20)    NOT NULL,
     status         VARCHAR(20)    NOT NULL,
     idempotency_key VARCHAR(64)   NOT NULL,

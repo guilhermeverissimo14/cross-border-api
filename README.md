@@ -105,7 +105,7 @@ Erros seguem sempre o mesmo formato (`timestamp`, `status`, `error`, `message`, 
 | Requisito | Como foi atendido |
 |---|---|
 | Remessa = conversão + transferência, revertida em qualquer inconsistência | `RemittanceService` em **uma única `@Transactional`**: débito, crédito, remessa e lançamentos são gravados juntos, ou nada é gravado |
-| Cotação do BCB, campo `cotacaoCompra` | `BcbExchangeRateClient` (API PTAX). A cotação usada fica gravada na remessa |
+| Cotação do BCB, campo `cotacaoCompra` | `BcbExchangeRateClient` (API PTAX). A cotação usada fica gravada na remessa, junto com o **dia a que ela pertence** (`quoteDate`): numa remessa de domingo, `exchangeRate` é a de sexta e `quoteDate` mostra isso |
 | Fim de semana: usar a última cotação | Fallback dia a dia, até 7 dias para trás, como o enunciado pede ("a última cotação obtida"). O 7 é escolha nossa: um fim de semana precisa de até 3 dias (segunda antes das 13h volta para a sexta) e feriados prolongados como o Carnaval, de uns 5. Cobre também feriado e "hoje antes da publicação". Isso vale quando o BCB **responde** que não há cotação; se ele **não responde**, é outro caso (ver o cliente do BCB, abaixo) |
 | Validar saldo antes da remessa | `422 Saldo insuficiente` |
 | Usuário com nome, e-mail, senha, CPF (PF) ou CNPJ (PJ); e-mail e documento únicos | Constraints `UNIQUE` no banco; duplicidade → `409`; senha com BCrypt |
@@ -126,7 +126,7 @@ Erros seguem sempre o mesmo formato (`timestamp`, `status`, `error`, `message`, 
 - **Lock otimista** (`@Version`) nas carteiras: duas remessas concorrentes na mesma carteira, uma leva `409` em vez de sobrescrever o saldo.
 - **Ledger imutável** (partida dobrada): cada remessa grava um `DEBIT` em BRL na carteira de quem envia e um `CREDIT` em USD na de quem recebe. Só leitura na API.
 - **Cache das cotações em duas camadas.** (1) **Spring Cache com Caffeine** (`@Cacheable` no `getQuote`), em memória, com TTL de 1 dia e no máximo 500 datas: a segunda remessa do dia não toca nem o banco nem o BCB. (2) A tabela `exchange_rates` (uma cotação por dia), que guarda o **histórico** e é de onde sai o fallback "última cotação obtida". Só entra no cache em memória a cotação do **dia exato**, porque ela não muda depois de publicada; um fallback (ex.: hoje antes das 13h devolve a de ontem) ficaria desatualizado depois da publicação. Erros também não são cacheados.
-- **Cliente do BCB resiliente**: timeouts de 3 s (conexão) e 5 s (leitura). O sistema distingue *"o BCB respondeu que não há cotação"* (fim de semana ou feriado: fallback para a última cotação) de *"o BCB não respondeu"* (erro, timeout ou 5xx). No segundo caso ele **falha direto com `503`** e uma mensagem clara, sem debitar nada e sem voltar dias às cegas: sem resposta do BCB não dá para saber se o dia é útil ou não, e converter dinheiro com uma cotação antiga seria pior que pedir para tentar de novo.
+- **Cliente do BCB resiliente**: timeouts de 3 s (conexão) e 5 s (leitura). O sistema distingue *"o BCB respondeu que não há cotação"* (fim de semana ou feriado: fallback para a última cotação) de *"o BCB não respondeu"* (erro, timeout, 5xx ou resposta fora do formato esperado). No segundo caso ele **falha direto com `503`** e uma mensagem clara, sem debitar nada e sem voltar dias às cegas: sem resposta do BCB não dá para saber se o dia é útil ou não, e converter dinheiro com uma cotação antiga seria pior que pedir para tentar de novo.
 - **Consultas extras** (remessas, extrato, cotação por data) e logs nos pontos de negócio, sem dados pessoais.
 
 ## Docker, Kubernetes e CI/CD
@@ -169,7 +169,7 @@ Em push na `main`, a imagem também é publicada no GitHub Container Registry (`
 |---|---|
 | `users` | Dados do usuário; `email` e `document` únicos; `user_type` PF/PJ |
 | `wallets` | **Uma linha por usuário e moeda** (`UNIQUE user_id, currency`); `balance` e `version` (lock otimista) |
-| `remittances` | A remessa: valores em BRL e USD, cotação usada, `idempotency_key` |
+| `remittances` | A remessa: valores em BRL e USD, cotação usada e o dia dela (`quote_date`), `idempotency_key` |
 | `ledger_entries` | Lançamentos imutáveis: carteira, moeda, `DEBIT`/`CREDIT`, valor, `reference_type`/`reference_id` (a remessa de origem) |
 | `exchange_rates` | Histórico das cotações do BCB: uma por dia (`quote_date` único); também serve de cache persistente |
 
