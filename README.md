@@ -57,7 +57,7 @@ docker run --rm -p 8080:8080 cross-border-api:local
 ./mvnw test        # só os testes
 ```
 
-Relatório em `target/site/jacoco/index.html`: cerca de **97% das linhas** e **92% dos branches** (180 testes). Nenhum teste chama o BCB de verdade.
+Relatório em `target/site/jacoco/index.html`: cerca de **97% das linhas** e **92% dos branches** (mais de 180 testes). Nenhum teste chama o BCB de verdade.
 
 | Tipo | O que cobre |
 |---|---|
@@ -134,21 +134,24 @@ O `Controller` só recebe e valida a requisição; as regras ficam no `Service`.
 flowchart TD
     A["POST /remittances<br/>token + Idempotency-Key"] --> B{"Token válido?"}
     B -- não --> E1["401"]
-    B -- sim --> C{"Chave já usada?"}
-    C -- "sim, mesmos dados" --> R1["Devolve a remessa original"]
-    C -- "sim, dados diferentes" --> E2["422"]
-    C -- não --> D{"Destinatário existe,<br/>saldo em BRL e limite do dia ok?"}
-    D -- não --> E3["404 ou 422"]
-    D -- sim --> Q["Busca a cotação<br/>(diagrama abaixo)"]
-    Q -- "BCB não respondeu" --> E4["503"]
-    Q -- ok --> T
+    B -- sim --> C
     subgraph T["Uma única transação"]
-        direction TB
-        T1["Debita BRL do remetente"] --> T2["Credita USD ao destinatário"] --> T3["Grava a remessa e os 2 lançamentos"]
+        C{"Chave já usada?"}
+        C -- "sim, mesmos dados" --> R1["Devolve a remessa original"]
+        C -- "sim, dados diferentes" --> E2["422"]
+        C -- não --> D{"Destinatário existe,<br/>saldo em BRL e limite do dia ok?"}
+        D -- não --> E3["404 ou 422"]
+        D -- sim --> Q["Busca a cotação<br/>(diagrama abaixo)"]
+        Q -- "BCB não respondeu" --> E4["503"]
+        Q -- ok --> W1["Debita BRL do remetente"]
+        W1 --> W2["Credita USD ao destinatário"]
+        W2 --> W3["Grava a remessa e os 2 lançamentos"]
     end
+    W3 --> OK["201 Created"]
     T -- "qualquer falha" --> RB["Rollback: nada é gravado,<br/>o saldo do remetente não muda"]
-    T -- ok --> OK["201 Created"]
 ```
+
+Só o `401` é resolvido antes, no filtro de segurança. Todo o resto, inclusive a busca da cotação, roda dentro da mesma `@Transactional`: um erro em qualquer passo desfaz tudo.
 
 ### Caminho da cotação
 
@@ -207,6 +210,8 @@ Também são públicos o Swagger, o health e o console do H2. As demais rotas ex
 ---
 
 ## 6. Requisitos e como foram atendidos
+
+**Diferenciais do desafio:** testes de integração (seção 2) · cache das cotações com Caffeine (seção 7) · Docker, Kubernetes e CI (seção 9) · melhorias possíveis (seção 10).
 
 | Requisito | Como foi atendido |
 |---|---|
