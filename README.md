@@ -125,7 +125,7 @@ Erros seguem sempre o mesmo formato (`timestamp`, `status`, `error`, `message`, 
 - **Idempotência.** `POST /remittances` exige `Idempotency-Key`; há `UNIQUE (sender_id, idempotency_key)` no banco. Repetir a chamada devolve a remessa original; mesma chave com dados diferentes é recusada; duas requisições simultâneas com a mesma chave → uma leva `409`. Medido localmente: sem a chave, dois cliques com 50 ms de intervalo debitavam **duas vezes** (12 de 12 tentativas); com ela, uma.
 - **Lock otimista** (`@Version`) nas carteiras: duas remessas concorrentes na mesma carteira, uma leva `409` em vez de sobrescrever o saldo.
 - **Ledger imutável** (partida dobrada): cada remessa grava um `DEBIT` em BRL na carteira de quem envia e um `CREDIT` em USD na de quem recebe. Só leitura na API.
-- **Cache das cotações** na tabela `exchange_rates` (uma por dia). É um cache em banco, não Spring Cache/Caffeine.
+- **Cache das cotações em duas camadas.** (1) **Spring Cache com Caffeine** (`@Cacheable` no `getQuote`), em memória, com TTL de 1 dia e no máximo 500 datas: a segunda remessa do dia não toca nem o banco nem o BCB. (2) A tabela `exchange_rates` (uma cotação por dia), que guarda o **histórico** e é de onde sai o fallback "última cotação obtida". Só entra no cache em memória a cotação do **dia exato**, porque ela não muda depois de publicada; um fallback (ex.: hoje antes das 13h devolve a de ontem) ficaria desatualizado depois da publicação. Erros também não são cacheados.
 - **Cliente do BCB resiliente**: timeouts de 3 s (conexão) e 5 s (leitura). O sistema distingue *"o BCB respondeu que não há cotação"* (fim de semana ou feriado: fallback para a última cotação) de *"o BCB não respondeu"* (erro, timeout ou 5xx). No segundo caso ele **falha direto com `503`** e uma mensagem clara, sem debitar nada e sem voltar dias às cegas: sem resposta do BCB não dá para saber se o dia é útil ou não, e converter dinheiro com uma cotação antiga seria pior que pedir para tentar de novo.
 - **Consultas extras** (remessas, extrato, cotação por data) e logs nos pontos de negócio, sem dados pessoais.
 
@@ -171,7 +171,7 @@ Em push na `main`, a imagem também é publicada no GitHub Container Registry (`
 | `wallets` | **Uma linha por usuário e moeda** (`UNIQUE user_id, currency`); `balance` e `version` (lock otimista) |
 | `remittances` | A remessa: valores em BRL e USD, cotação usada, `idempotency_key` |
 | `ledger_entries` | Lançamentos imutáveis: carteira, moeda, `DEBIT`/`CREDIT`, valor, `reference_type`/`reference_id` (a remessa de origem) |
-| `exchange_rates` | Cache da cotação: uma por dia (`quote_date` único) |
+| `exchange_rates` | Histórico das cotações do BCB: uma por dia (`quote_date` único); também serve de cache persistente |
 
 ---
 
@@ -185,7 +185,7 @@ Em push na `main`, a imagem também é publicada no GitHub Container Registry (`
 - **Banco em memória**: os dados somem ao reiniciar e não é possível escalar horizontalmente (cada instância teria o seu banco). Em produção seria um banco externo (ex.: PostgreSQL).
 - **Depósito é auxiliar de teste** e não gera lançamento no ledger; por isso o extrato de quem depositou não fecha com o saldo.
 - **Sem paginação** no extrato; **chaves de idempotência não expiram** (o padrão de mercado é uns 24 h, em tabela própria).
-- **Dias sem cotação não são guardados em cache**: em fins de semana, cada consulta chama o BCB 2 vezes antes de achar a sexta no cache.
+- **Dias sem cotação não são guardados em cache**: em fins de semana, e hoje antes das 13h, cada consulta pergunta ao BCB pelo dia sem cotação (até 2 vezes no fim de semana) antes de achar a última no banco. Um cache negativo de vida curta resolveria.
 
 <details>
 <summary><b>Estrutura do projeto</b></summary>

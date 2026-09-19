@@ -17,17 +17,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.guilherme.crossborderapi.entity.LedgerEntry;
 import com.guilherme.crossborderapi.enums.LedgerEntryType;
 import com.guilherme.crossborderapi.exception.ExchangeRateProviderUnavailableException;
-import com.guilherme.crossborderapi.repository.ExchangeRateRepository;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 
 class RemittanceEndpointsTest extends ApiIntegrationTest {
-
-    @Autowired
-    private ExchangeRateRepository exchangeRateRepository;
 
     @Test
     void createRemittanceMovesMoneyAndConvertsWithTheDayQuote() throws Exception {
@@ -252,7 +247,7 @@ class RemittanceEndpointsTest extends ApiIntegrationTest {
 
     @Test
     void unavailableQuoteReturns422AndRollsBackEverything() throws Exception {
-        exchangeRateRepository.deleteAll();
+        clearQuoteCaches();
         when(bcbClient.fetchBuyRate(any())).thenReturn(Optional.empty());
         long sender = createUser("PF");
         long receiver = createUser("PF");
@@ -269,7 +264,7 @@ class RemittanceEndpointsTest extends ApiIntegrationTest {
 
     @Test
     void bcbDownReturns503WithAClearMessageAndNothingIsDebited() throws Exception {
-        exchangeRateRepository.deleteAll();
+        clearQuoteCaches();
         when(bcbClient.fetchBuyRate(any()))
                 .thenThrow(new ExchangeRateProviderUnavailableException("BCB fora do ar", null));
         long sender = createUser("PF");

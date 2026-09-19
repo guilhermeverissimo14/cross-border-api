@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.guilherme.crossborderapi.dto.exchangerate.ExchangeRateQuote;
 import com.guilherme.crossborderapi.dto.remittance.RemittanceCreateRequest;
 import com.guilherme.crossborderapi.dto.remittance.RemittanceResponse;
 import com.guilherme.crossborderapi.entity.LedgerEntry;
@@ -363,7 +364,8 @@ class RemittanceServiceTest {
         when(dailyLimitPolicyProvider.getDailyLimit(UserType.PF)).thenReturn(new BigDecimal("10000.00"));
         when(remittanceRepository.sumAmountBrlBySender(any(), any(LocalDateTime.class), any(LocalDateTime.class)))
                 .thenReturn(BigDecimal.ZERO);
-        when(exchangeRateService.getBuyRate(any(LocalDate.class))).thenReturn(new BigDecimal("5.00"));
+        when(exchangeRateService.getQuote(any(LocalDate.class)))
+                .thenReturn(new ExchangeRateQuote(LocalDate.now(), new BigDecimal("5.00")));
     }
 
     private Remittance previousRemittance() {

@@ -85,7 +85,7 @@ public class RemittanceService {
 
         validateDailyLimit(sender, amountBrl);
 
-        BigDecimal exchangeRate = exchangeRateService.getBuyRate(LocalDate.now());
+        BigDecimal exchangeRate = exchangeRateService.getQuote(LocalDate.now()).buyRate();
         BigDecimal amountUsd = amountBrl.divide(exchangeRate, MONEY_SCALE, RoundingMode.HALF_UP); //amountBrl / exchangeRate
 
         senderWallet.setBalance(senderWallet.getBalance().subtract(amountBrl));

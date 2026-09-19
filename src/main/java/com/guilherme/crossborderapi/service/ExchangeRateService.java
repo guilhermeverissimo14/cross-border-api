@@ -1,6 +1,7 @@
 package com.guilherme.crossborderapi.service;
 
 import com.guilherme.crossborderapi.client.BcbExchangeRateClient;
+import com.guilherme.crossborderapi.config.CacheConfig;
 import com.guilherme.crossborderapi.dto.exchangerate.ExchangeRateQuote;
 import com.guilherme.crossborderapi.entity.ExchangeRate;
 import com.guilherme.crossborderapi.exception.ExchangeRateUnavailableException;
@@ -10,6 +11,7 @@ import java.time.LocalDate;
 import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,14 +26,11 @@ public class ExchangeRateService {
     private final ExchangeRateRepository exchangeRateRepository;
     private final BcbExchangeRateClient bcbExchangeRateClient;
 
-    @Transactional
-    public BigDecimal getBuyRate(LocalDate date) {
-        return getQuote(date).buyRate();
-    }
-
     // Tenta a data pedida; se o BCB responder que não há cotação (fim de semana, feriado), tenta o dia anterior, e assim por diante.
     // Se o BCB não responder, o cliente lança ExchangeRateProviderUnavailableException e a consulta falha (503): não se volta dias às cegas.
     // Devolve também a data em que a cotação realmente existe, pra quem consulta enxergar o fallback.
+    // Só cacheia a cotação do dia exato: um fallback (ex: hoje antes das 13h devolve a de ontem) ficaria desatualizado depois da publicação. Falhas também não são cacheadas.
+    @Cacheable(cacheNames = CacheConfig.EXCHANGE_RATES, key = "#date", unless = "!#result.quoteDate().equals(#date)")
     @Transactional
     public ExchangeRateQuote getQuote(LocalDate date) {
         if (date.isAfter(LocalDate.now())) {

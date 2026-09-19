@@ -7,6 +7,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.guilherme.crossborderapi.client.BcbExchangeRateClient;
+import com.guilherme.crossborderapi.config.CacheConfig;
+import com.guilherme.crossborderapi.repository.ExchangeRateRepository;
 import com.guilherme.crossborderapi.repository.LedgerEntryRepository;
 import com.guilherme.crossborderapi.repository.RemittanceRepository;
 import com.jayway.jsonpath.JsonPath;
@@ -18,6 +20,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.cache.CacheManager;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -46,6 +49,12 @@ public abstract class ApiIntegrationTest {
     @Autowired
     private JwtEncoder jwtEncoder;
 
+    @Autowired
+    protected CacheManager cacheManager;
+
+    @Autowired
+    private ExchangeRateRepository exchangeRateRepository;
+
     @MockitoBean
     protected BcbExchangeRateClient bcbClient;
 
@@ -59,6 +68,12 @@ public abstract class ApiIntegrationTest {
     @BeforeEach
     void stubBcbWithDefaultRate() {
         when(bcbClient.fetchBuyRate(any())).thenReturn(Optional.of(DEFAULT_RATE));
+    }
+
+    // Esquece as cotações guardadas (banco e cache em memória) para forçar uma nova consulta ao BCB
+    protected void clearQuoteCaches() {
+        exchangeRateRepository.deleteAll();
+        cacheManager.getCache(CacheConfig.EXCHANGE_RATES).clear();
     }
 
     // Token forjado direto com o encoder, sem passar pelo login

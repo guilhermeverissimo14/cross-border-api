@@ -48,7 +48,7 @@ class ExchangeRateServiceTest {
                 .build();
         when(exchangeRateRepository.findByQuoteDate(date)).thenReturn(Optional.of(cached));
 
-        BigDecimal result = exchangeRateService.getBuyRate(date);
+        BigDecimal result = exchangeRateService.getQuote(date).buyRate();
 
         assertThat(result).isEqualByComparingTo("5.1234");
         verifyNoInteractions(bcbExchangeRateClient);
@@ -60,7 +60,7 @@ class ExchangeRateServiceTest {
         when(exchangeRateRepository.findByQuoteDate(date)).thenReturn(Optional.empty());
         when(bcbExchangeRateClient.fetchBuyRate(date)).thenReturn(Optional.of(new BigDecimal("5.5000")));
 
-        BigDecimal result = exchangeRateService.getBuyRate(date);
+        BigDecimal result = exchangeRateService.getQuote(date).buyRate();
 
         assertThat(result).isEqualByComparingTo("5.5000");
 
@@ -85,7 +85,7 @@ class ExchangeRateServiceTest {
         when(exchangeRateRepository.findByQuoteDate(friday)).thenReturn(Optional.empty());
         when(bcbExchangeRateClient.fetchBuyRate(friday)).thenReturn(Optional.of(new BigDecimal("5.10")));
 
-        BigDecimal result = exchangeRateService.getBuyRate(sunday);
+        BigDecimal result = exchangeRateService.getQuote(sunday).buyRate();
 
         assertThat(result).isEqualByComparingTo("5.10");
 
@@ -111,7 +111,7 @@ class ExchangeRateServiceTest {
         when(exchangeRateRepository.findByQuoteDate(friday)).thenReturn(
                 Optional.of(ExchangeRate.builder().quoteDate(friday).buyRate(new BigDecimal("5.10")).build()));
 
-        BigDecimal result = exchangeRateService.getBuyRate(sunday);
+        BigDecimal result = exchangeRateService.getQuote(sunday).buyRate();
 
         assertThat(result).isEqualByComparingTo("5.10");
         verify(bcbExchangeRateClient, never()).fetchBuyRate(friday);
@@ -166,7 +166,7 @@ class ExchangeRateServiceTest {
             when(bcbExchangeRateClient.fetchBuyRate(candidate)).thenReturn(Optional.empty());
         }
 
-        assertThatThrownBy(() -> exchangeRateService.getBuyRate(date))
+        assertThatThrownBy(() -> exchangeRateService.getQuote(date).buyRate())
                 .isInstanceOf(ExchangeRateUnavailableException.class);
     }
 
