@@ -21,6 +21,7 @@ import com.guilherme.crossborderapi.enums.LedgerEntryType;
 import com.guilherme.crossborderapi.enums.RemittanceDirection;
 import com.guilherme.crossborderapi.enums.RemittanceStatus;
 import com.guilherme.crossborderapi.enums.UserType;
+import com.guilherme.crossborderapi.exception.AmountTooSmallException;
 import com.guilherme.crossborderapi.exception.DailyLimitExceededException;
 import com.guilherme.crossborderapi.exception.IdempotencyKeyInUseException;
 import com.guilherme.crossborderapi.exception.IdempotencyKeyReuseException;
@@ -175,6 +176,22 @@ class RemittanceServiceTest {
         assertThat(creditEntry.getCurrency()).isEqualTo(Currency.USD);
         assertThat(creditEntry.getAmount()).isEqualByComparingTo("200.00");
         assertThat(creditEntry.getReferenceId()).isEqualTo(100L);
+    }
+
+    @Test
+    void rejectsAmountThatConvertsToZeroDollarsWithoutTouchingTheWallets() {
+        Wallet senderWallet = Wallet.builder().balance(new BigDecimal("100.00")).build();
+        Wallet receiverWallet = Wallet.builder().balance(BigDecimal.ZERO).build();
+        stubValidRemittanceScenario(senderWallet, receiverWallet); // cotação 5,00
+
+        assertThatThrownBy(() -> remittanceService.createRemittance(
+                1L, new RemittanceCreateRequest(2L, new BigDecimal("0.01")), KEY))
+                .isInstanceOf(AmountTooSmallException.class)
+                .hasMessageContaining("US$ 0,00");
+
+        assertThat(senderWallet.getBalance()).isEqualByComparingTo("100.00");
+        verify(walletRepository, never()).save(any());
+        verify(remittanceRepository, never()).save(any());
     }
 
     @Test

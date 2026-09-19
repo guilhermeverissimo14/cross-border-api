@@ -74,6 +74,58 @@ class UserEndpointsTest extends ApiIntegrationTest {
     }
 
     @Test
+    void documentLengthMustMatchTheUserType() throws Exception {
+        String cnpjForPf = NEW_USER.formatted("len1@teste.com", "12345678000195");
+        String cpfForPj = NEW_USER.formatted("len2@teste.com", "12345678909").replace("\"PF\"", "\"PJ\"");
+
+        postJson("/users", cnpjForPf)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fieldErrors.document").value("document deve ser um CPF com 11 dígitos"));
+        postJson("/users", cpfForPj)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fieldErrors.document").value("document deve ser um CNPJ com 14 dígitos"));
+    }
+
+    @Test
+    void documentWithLettersIsRejected() throws Exception {
+        postJson("/users", NEW_USER.formatted("abc1@teste.com", "abc"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fieldErrors.document").exists());
+        postJson("/users", NEW_USER.formatted("abc2@teste.com", "12345678909abc"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fieldErrors.document").exists());
+    }
+
+    @Test
+    void formattedAndPlainDocumentsAreTheSameUser() throws Exception {
+        postJson("/users", NEW_USER.formatted("fmt1@teste.com", "123.456.789-09"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.document").value("12345678909"));
+
+        postJson("/users", NEW_USER.formatted("fmt2@teste.com", "12345678909"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message", containsString("12345678909")));
+    }
+
+    @Test
+    void formattedCnpjIsAcceptedForPj() throws Exception {
+        postJson("/users", NEW_USER.formatted("cnpj@teste.com", "45.723.174/0001-10").replace("\"PF\"", "\"PJ\""))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.document").value("45723174000110"));
+    }
+
+    @Test
+    void emailIsNormalizedToLowercaseSoCaseDoesNotCreateDuplicates() throws Exception {
+        postJson("/users", NEW_USER.formatted("Case.Test@Teste.COM", "90000000021"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.email").value("case.test@teste.com"));
+
+        postJson("/users", NEW_USER.formatted("CASE.TEST@teste.com", "90000000022"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message", containsString("case.test@teste.com")));
+    }
+
+    @Test
     void createUserWithMalformedJsonReturns400() throws Exception {
         postJson("/users", "{ isso não é json")
                 .andExpect(status().isBadRequest())
@@ -164,6 +216,20 @@ class UserEndpointsTest extends ApiIntegrationTest {
         postAs(id, "/users/" + id + "/wallets/deposit", "{\"currency\":\"EUR\",\"amount\":5}")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message", containsString("currency")));
+    }
+
+    @Test
+    void depositBelowOneCentOrWithMoreThanTwoDecimalsReturns400() throws Exception {
+        long id = createUser("PF");
+
+        postAs(id, "/users/" + id + "/wallets/deposit", "{\"currency\":\"BRL\",\"amount\":0.004}")
+                .andExpect(status().isBadRequest());
+        postAs(id, "/users/" + id + "/wallets/deposit", "{\"currency\":\"BRL\",\"amount\":0.00}")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fieldErrors.amount").value("amount deve ser de no mínimo 0,01"));
+        postAs(id, "/users/" + id + "/wallets/deposit", "{\"currency\":\"BRL\",\"amount\":10.005}")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fieldErrors.amount").value("amount deve ter no máximo 2 casas decimais"));
     }
 
     @Test

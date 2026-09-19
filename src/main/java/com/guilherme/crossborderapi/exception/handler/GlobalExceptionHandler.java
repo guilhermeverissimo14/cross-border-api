@@ -1,5 +1,6 @@
 package com.guilherme.crossborderapi.exception.handler;
 
+import com.guilherme.crossborderapi.exception.AmountTooSmallException;
 import com.guilherme.crossborderapi.exception.DailyLimitExceededException;
 import com.guilherme.crossborderapi.exception.DuplicateResourceException;
 import com.guilherme.crossborderapi.exception.ExchangeRateProviderUnavailableException;
@@ -49,6 +50,7 @@ public class GlobalExceptionHandler {
 
     // Regras de negócio que a requisição, mesmo bem formada, não consegue atender no estado atual.
     @ExceptionHandler({
+            AmountTooSmallException.class,
             ExchangeRateUnavailableException.class,
             InsufficientBalanceException.class,
             SelfRemittanceException.class,

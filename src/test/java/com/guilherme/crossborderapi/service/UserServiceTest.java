@@ -73,6 +73,32 @@ class UserServiceTest {
     }
 
     @Test
+    void createUserNormalizesEmailAndDocumentBeforeCheckingAndSaving() {
+        UserCreateRequest messy = new UserCreateRequest(
+                "Maria", "  Maria@Email.COM ", "senha123", UserType.PF, "123.456.789-00");
+        when(userRepository.existsByEmail("maria@email.com")).thenReturn(false);
+        when(userRepository.existsByDocument("12345678900")).thenReturn(false);
+        when(passwordEncoder.encode("senha123")).thenReturn("hash");
+        when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        UserResponse response = userService.createUser(messy);
+
+        assertThat(response.email()).isEqualTo("maria@email.com");
+        assertThat(response.document()).isEqualTo("12345678900");
+    }
+
+    @Test
+    void createUserTreatsADifferentlyFormattedDocumentAsDuplicate() {
+        when(userRepository.existsByEmail("maria@email.com")).thenReturn(false);
+        when(userRepository.existsByDocument("12345678900")).thenReturn(true);
+
+        assertThatThrownBy(() -> userService.createUser(new UserCreateRequest(
+                "Maria", "maria@email.com", "senha123", UserType.PF, "123.456.789-00")))
+                .isInstanceOf(DuplicateResourceException.class);
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
     void createUserRejectsDuplicateEmail() {
         when(userRepository.existsByEmail(request.email())).thenReturn(true);
 

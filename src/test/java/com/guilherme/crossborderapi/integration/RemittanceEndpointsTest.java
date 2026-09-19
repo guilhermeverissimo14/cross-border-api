@@ -136,12 +136,37 @@ class RemittanceEndpointsTest extends ApiIntegrationTest {
                         .content("{\"amountBrl\":0}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.fieldErrors.receiverId").exists())
-                .andExpect(jsonPath("$.fieldErrors.amountBrl").value("amountBrl deve ser maior que zero"));
+                .andExpect(jsonPath("$.fieldErrors.amountBrl").value("amountBrl deve ser de no mínimo 0,01"));
 
         postRemittance("invalid-body-2", 1, 2, "-10").andExpect(status().isBadRequest());
         postRemittance("invalid-body-3", 1, 2, "\"abc\"")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message", containsString("amountBrl")));
+    }
+
+    @Test
+    void amountsBelowOneCentOrWithMoreThanTwoDecimalsAreRejected() throws Exception {
+        postRemittance("small-1", 1, 2, "0.004").andExpect(status().isBadRequest());
+        postRemittance("small-2", 1, 2, "0.00")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fieldErrors.amountBrl").value("amountBrl deve ser de no mínimo 0,01"));
+        postRemittance("small-3", 1, 2, "10.005")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fieldErrors.amountBrl").value("amountBrl deve ter no máximo 2 casas decimais"));
+    }
+
+    @Test
+    void amountThatConvertsToZeroDollarsReturns422AndDebitsNothing() throws Exception {
+        long sender = createUser("PF");
+        long receiver = createUser("PF");
+        deposit(sender, "BRL", "10");
+
+        // R$ 0,01 a 5,00 por dólar são US$ 0,002, que arredonda para US$ 0,00
+        postRemittance("zero-usd", sender, receiver, "0.01")
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(jsonPath("$.message").value("Valor muito baixo: R$ 0.01 converte para US$ 0,00"));
+
+        assertNothingPersistedAndMoneyBack(sender, receiver, "10");
     }
 
     @Test

@@ -11,6 +11,7 @@ import com.guilherme.crossborderapi.enums.Currency;
 import com.guilherme.crossborderapi.enums.LedgerEntryType;
 import com.guilherme.crossborderapi.enums.RemittanceDirection;
 import com.guilherme.crossborderapi.enums.RemittanceStatus;
+import com.guilherme.crossborderapi.exception.AmountTooSmallException;
 import com.guilherme.crossborderapi.exception.DailyLimitExceededException;
 import com.guilherme.crossborderapi.exception.IdempotencyKeyInUseException;
 import com.guilherme.crossborderapi.exception.IdempotencyKeyReuseException;
@@ -89,6 +90,11 @@ public class RemittanceService {
         ExchangeRateQuote quote = exchangeRateService.getQuote(LocalDate.now());
         BigDecimal exchangeRate = quote.buyRate();
         BigDecimal amountUsd = amountBrl.divide(exchangeRate, MONEY_SCALE, RoundingMode.HALF_UP); //amountBrl / exchangeRate
+
+        // Um valor tão pequeno que converte para US$ 0,00 geraria uma remessa sem nada a creditar
+        if (amountUsd.signum() == 0) {
+            throw new AmountTooSmallException("Valor muito baixo: R$ " + amountBrl + " converte para US$ 0,00");
+        }
 
         senderWallet.setBalance(senderWallet.getBalance().subtract(amountBrl));
         receiverWallet.setBalance(receiverWallet.getBalance().add(amountUsd));

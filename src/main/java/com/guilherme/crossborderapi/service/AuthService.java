@@ -6,6 +6,7 @@ import com.guilherme.crossborderapi.dto.auth.LoginResponse;
 import com.guilherme.crossborderapi.entity.User;
 import com.guilherme.crossborderapi.exception.InvalidCredentialsException;
 import com.guilherme.crossborderapi.repository.UserRepository;
+import com.guilherme.crossborderapi.validation.InputNormalizer;
 import java.time.Instant;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -33,7 +34,7 @@ public class AuthService {
     @Transactional(readOnly = true)
     public LoginResponse login(LoginRequest request) {
         // Mesmo erro para e-mail desconhecido e senha errada, para não revelar quais e-mails existem
-        User user = userRepository.findByEmail(request.email())
+        User user = userRepository.findByEmail(InputNormalizer.email(request.email()))
                 .filter(found -> passwordEncoder.matches(request.password(), found.getPassword()))
                 .orElseThrow(InvalidCredentialsException::new);
 

@@ -90,12 +90,12 @@ Erros seguem sempre o mesmo formato (`timestamp`, `status`, `error`, `message`, 
 
 | Código | Quando |
 |---|---|
-| `400` | Campo inválido ou ausente, header ausente, id ou data em formato errado |
+| `400` | Campo inválido ou ausente (inclui documento com tamanho errado para o tipo e valores com mais de 2 casas ou menores que 0,01), header ausente, id ou data em formato errado |
 | `401` | Sem token, token inválido ou expirado, ou e-mail/senha incorretos no login |
 | `403` | `/users/{id}/...` de outro usuário |
 | `404` | Usuário ou remessa inexistente (ou remessa de que o usuário não participa) |
 | `409` | E-mail/documento já cadastrado, carteira alterada por outra operação, chave de idempotência em uso |
-| `422` | Regra de negócio: saldo insuficiente, limite diário, remessa para si mesmo, cotação indisponível, chave reutilizada com outros dados |
+| `422` | Regra de negócio: saldo insuficiente, limite diário, remessa para si mesmo, cotação indisponível, valor tão baixo que converte para US$ 0,00, chave reutilizada com outros dados |
 | `503` | API do BCB fora do ar (e sem a cotação do dia em cache); é só tentar de novo |
 
 ---
@@ -108,7 +108,7 @@ Erros seguem sempre o mesmo formato (`timestamp`, `status`, `error`, `message`, 
 | Cotação do BCB, campo `cotacaoCompra` | `BcbExchangeRateClient` (API PTAX). A cotação usada fica gravada na remessa, junto com o **dia a que ela pertence** (`quoteDate`): numa remessa de domingo, `exchangeRate` é a de sexta e `quoteDate` mostra isso |
 | Fim de semana: usar a última cotação | Fallback dia a dia, até 7 dias para trás, como o enunciado pede ("a última cotação obtida"). O 7 é escolha nossa: um fim de semana precisa de até 3 dias (segunda antes das 13h volta para a sexta) e feriados prolongados como o Carnaval, de uns 5. Cobre também feriado e "hoje antes da publicação". Isso vale quando o BCB **responde** que não há cotação; se ele **não responde**, é outro caso (ver o cliente do BCB, abaixo) |
 | Validar saldo antes da remessa | `422 Saldo insuficiente` |
-| Usuário com nome, e-mail, senha, CPF (PF) ou CNPJ (PJ); e-mail e documento únicos | Constraints `UNIQUE` no banco; duplicidade → `409`; senha com BCrypt |
+| Usuário com nome, e-mail, senha, CPF (PF) ou CNPJ (PJ); e-mail e documento únicos | Constraints `UNIQUE` no banco; duplicidade → `409`; senha com BCrypt. O e-mail é guardado em minúsculas e o documento só com os dígitos (`123.456.789-09` e `12345678909` são o mesmo usuário); o documento precisa ter 11 dígitos para PF e 14 para PJ |
 | Limite diário: PF R$ 10 mil, PJ R$ 50 mil | **Strategy**: `PfDailyLimitPolicy` e `PjDailyLimitPolicy` implementam `DailyLimitPolicy`. Soma o BRL já enviado no dia; passou do limite → `422` |
 | Sem restrição entre PF e PJ | Qualquer combinação é aceita |
 | Carteira em Real e em Dólar | Criadas automaticamente, com saldo zero, no cadastro |
@@ -117,6 +117,7 @@ Erros seguem sempre o mesmo formato (`timestamp`, `status`, `error`, `message`, 
 **Interpretações que tomei onde o enunciado é aberto:**
 - **Remessa para o próprio usuário é bloqueada** (`422`): "remessa entre eles" pressupõe duas partes.
 - **O limite diário** conta o valor em BRL das remessas do remetente no dia corrente do servidor (a imagem Docker usa o fuso `America/Sao_Paulo`).
+- **Valores em dinheiro** têm no máximo 2 casas decimais e mínimo de R$ 0,01 (`400` caso contrário). Um valor que, na cotação do dia, converte para US$ 0,00 é recusado com `422`, em vez de gerar uma remessa que não credita nada.
 - **Remessa que falha não é gravada.** Só o erro HTTP volta, e nada fica pela metade.
 
 ## Além do que foi solicitado
@@ -182,7 +183,7 @@ Em push na `main`, a imagem também é publicada no GitHub Container Registry (`
 - **`GET /users` lista todos os usuários** (nome, e-mail e documento) para qualquer usuário logado, de propósito, para facilitar os testes. Em produção seria restrito, por exemplo a um perfil administrador.
 - **Console e porta 9092 do H2 ligados por padrão**, para facilitar a avaliação do banco. Eles dão acesso sem token (leem hashes de senha e alteram saldos), então em um ambiente real seriam desligados, deixando o console só em um profile de desenvolvimento. No Kubernetes o `ConfigMap` já os desliga.
 - **Segredo do JWT.** O valor do `application.properties` é só para desenvolvimento; em qualquer ambiente real, defina `APP_SECURITY_JWT_SECRET` (mínimo 32 caracteres). No Kubernetes ele vem de um `Secret` criado à mão, sem versionar. Uma melhoria seria um gerenciador de segredos externo (Vault, Sealed Secrets) e rotação de chaves.
-- **CPF/CNPJ**: a unicidade é garantida, mas os dígitos verificadores não são validados.
+- **CPF/CNPJ**: o documento é normalizado (só dígitos) e validado pelo tamanho conforme o tipo, e a unicidade é garantida, mas os **dígitos verificadores não são validados**.
 - **Banco em memória**: os dados somem ao reiniciar e não é possível escalar horizontalmente (cada instância teria o seu banco). Em produção seria um banco externo (ex.: PostgreSQL).
 - **Depósito é auxiliar de teste** e não gera lançamento no ledger; por isso o extrato de quem depositou não fecha com o saldo.
 - **Sem paginação** no extrato; **chaves de idempotência não expiram** (o padrão de mercado é uns 24 h, em tabela própria).

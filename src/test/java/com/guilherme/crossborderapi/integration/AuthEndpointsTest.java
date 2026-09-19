@@ -26,7 +26,7 @@ class AuthEndpointsTest extends ApiIntegrationTest {
     private String registerAndLogin(String email) throws Exception {
         mockMvc.perform(post("/users").contentType(MediaType.APPLICATION_JSON).content(
                 ("{\"fullName\":\"Ana\",\"email\":\"%s\",\"password\":\"senha123\","
-                        + "\"userType\":\"PF\",\"document\":\"%s\"}").formatted(email, email.hashCode() & 0x7fffffff)));
+                        + "\"userType\":\"PF\",\"document\":\"%s\"}").formatted(email, "%011d".formatted(email.hashCode() & 0x7fffffffL))));
         String body = login(email, "senha123").andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         return JsonPath.read(body, "$.accessToken");
     }
@@ -48,6 +48,13 @@ class AuthEndpointsTest extends ApiIntegrationTest {
 
         mockMvc.perform(get("/users").header(HttpHeaders.AUTHORIZATION, "Bearer " + token))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void loginIgnoresTheCaseOfTheEmail() throws Exception {
+        registerAndLogin("ana.case@teste.com");
+
+        login("  ANA.Case@Teste.COM ", "senha123").andExpect(status().isOk());
     }
 
     @Test

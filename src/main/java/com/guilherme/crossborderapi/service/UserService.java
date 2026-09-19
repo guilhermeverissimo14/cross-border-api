@@ -12,6 +12,7 @@ import com.guilherme.crossborderapi.exception.DuplicateResourceException;
 import com.guilherme.crossborderapi.exception.ResourceNotFoundException;
 import com.guilherme.crossborderapi.repository.UserRepository;
 import com.guilherme.crossborderapi.repository.WalletRepository;
+import com.guilherme.crossborderapi.validation.InputNormalizer;
 import java.math.BigDecimal;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -31,19 +32,22 @@ public class UserService {
 
     @Transactional
     public UserResponse createUser(UserCreateRequest request) {
-        if (userRepository.existsByEmail(request.email())) {
-            throw new DuplicateResourceException("E-mail já cadastrado: " + request.email());
+        // Normaliza antes de comparar: "Ana@X.com" e "ana@x.com", ou "123.456.789-09" e "12345678909", são o mesmo
+        String email = InputNormalizer.email(request.email());
+        String document = InputNormalizer.document(request.document());
+        if (userRepository.existsByEmail(email)) {
+            throw new DuplicateResourceException("E-mail já cadastrado: " + email);
         }
-        if (userRepository.existsByDocument(request.document())) {
-            throw new DuplicateResourceException("Documento já cadastrado: " + request.document());
+        if (userRepository.existsByDocument(document)) {
+            throw new DuplicateResourceException("Documento já cadastrado: " + document);
         }
 
         User user = User.builder()
                 .fullName(request.fullName())
-                .email(request.email())
+                .email(email)
                 .password(passwordEncoder.encode(request.password()))
                 .userType(request.userType())
-                .document(request.document())
+                .document(document)
                 .build();
 
         User savedUser = userRepository.save(user);

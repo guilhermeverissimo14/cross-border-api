@@ -53,7 +53,7 @@ public class RemittanceController {
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
             @ApiResponse(responseCode = "503", description = "API do BCB fora do ar e sem cotação recente em cache; tente novamente",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
-            @ApiResponse(responseCode = "422", description = "Regra de negócio violada (saldo insuficiente, limite diário, remessa para o próprio usuário, cotação indisponível) ou Idempotency-Key já usada com dados diferentes",
+            @ApiResponse(responseCode = "422", description = "Regra de negócio violada (saldo insuficiente, limite diário, remessa para o próprio usuário, cotação indisponível, valor que converte para US$ 0,00) ou Idempotency-Key já usada com dados diferentes",
                     content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
     })
     @PostMapping
